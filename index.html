@@ -344,31 +344,37 @@
 
   // --- INITIALIZATION ---
   window.onload = async () => {
-      lucide.createIcons();
-      const savedTheme = localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-      applyTheme(savedTheme);
-      gasWebAppUrl = localStorage.removeItem('gasWebAppUrl')
-      if (!gasWebAppUrl) {
-          gasWebAppUrl = prompt("กรุณาวาง URL ของ Google Apps Script Web App:");
-          if (gasWebAppUrl) {
-              localStorage.setItem('gasWebAppUrl', gasWebAppUrl);
-          }
-      }
-      await initializeApp();
-      getLocation();
-      
-      const today = new Date();
-      const yyyy = today.getFullYear();
-      const mm = String(today.getMonth() + 1).padStart(2, '0');
-      
-      document.getElementById('dashboard-date').valueAsDate = today;
-      document.getElementById('report-date-filter').valueAsDate = today;
-      document.getElementById('summary-date-filter').value = `${yyyy}-${mm}`;
+    lucide.createIcons();
 
-      document.getElementById('dashboard-date').addEventListener('change', renderDashboard);
-      document.getElementById('summary-period').addEventListener('change', renderDashboard);
-      document.getElementById('image-upload-input').addEventListener('change', handleImageUpload);
-  };
+    const savedTheme = localStorage.getItem('theme') ||
+        (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    applyTheme(savedTheme);
+
+    // ✅ แก้ตรงนี้
+    gasWebAppUrl = localStorage.getItem('gasWebAppUrl');
+    if (!gasWebAppUrl) {
+        gasWebAppUrl = prompt("กรุณาวาง URL ของ Google Apps Script Web App:");
+        if (gasWebAppUrl) {
+            localStorage.setItem('gasWebAppUrl', gasWebAppUrl);
+        }
+    }
+
+    await initializeApp();
+    getLocation();
+    
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    
+    document.getElementById('dashboard-date').valueAsDate = today;
+    document.getElementById('report-date-filter').valueAsDate = today;
+    document.getElementById('summary-date-filter').value = `${yyyy}-${mm}`;
+
+    document.getElementById('dashboard-date').addEventListener('change', renderDashboard);
+    document.getElementById('summary-period').addEventListener('change', renderDashboard);
+    document.getElementById('image-upload-input').addEventListener('change', handleImageUpload);
+};
+
 
   async function initializeApp() {
       try {
