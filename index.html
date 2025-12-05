@@ -351,13 +351,9 @@
     applyTheme(savedTheme);
 
     // ✅ แก้ตรงนี้
-    gasWebAppUrl = localStorage.getItem('gasWebAppUrl');
-    if (!gasWebAppUrl) {
-        gasWebAppUrl = prompt("กรุณาวาง URL ของ Google Apps Script Web App:");
-        if (gasWebAppUrl) {
-            localStorage.setItem('gasWebAppUrl', gasWebAppUrl);
-        }
-    }
+    // 🔥 ตั้งค่า URL แบบตายตัว ไม่ต้องใช้ prompt
+gasWebAppUrl = "https://script.google.com/macros/s/AKfycby10ffnq5oO4TcMV5hyx27Fv9ToOlVsoTkvqgFuJfhFGQOIHk4K8_axSqCid3u_Ls559A/exec";
+
 
     await initializeApp();
     getLocation();
