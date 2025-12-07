@@ -468,8 +468,49 @@
                 if (rosterLoading) rosterLoading.style.display = 'block';
                 const response = await apiCall({ action: 'getStudents' });
                 if (response.success) {
-                    students = response.data;
-                } else {
+    const { summary, lineData } = response.data || {};
+
+    // เก็บข้อมูลไว้ใช้ตอนกดส่ง LINE
+    lastReportDataForLine = Array.isArray(lineData) ? lineData : [];
+
+    // อัปเดตปุ่มส่ง LINE
+    document.getElementById('send-line-btn').disabled = lastReportDataForLine.length === 0;
+
+    // แสดงข้อความว่าถ้าไม่มีข้อมูลให้หยุดแค่นี้
+    if (!summary || summary.length === 0) {
+        reportTableBody.innerHTML = `<tr><td colspan="8" class="text-center p-8 text-gray-500">
+            ไม่พบข้อมูลตามเงื่อนไขที่เลือก
+        </td></tr>`;
+
+        linePreview.innerHTML = `<p class="text-gray-500">ไม่พบข้อมูล</p>`;
+        return;
+    }
+
+    // แสดง summary
+    reportTableBody.innerHTML = "";
+    summary.forEach(item => {
+        reportTableBody.innerHTML += `
+            <tr>
+                <td class="p-3">${item.class}</td>
+                <td class="p-3">${item.subject}</td>
+                <td class="p-3 text-center">${item.totalStudents}</td>
+                <td class="p-3 text-center">${item.present}</td>
+                <td class="p-3 text-center">${item.absent}</td>
+                <td class="p-3 text-center">${item.leave}</td>
+                <td class="p-3 text-center font-bold">${item.totalPresent ?? '-'}</td>
+                <td class="p-3 text-center font-bold">${item.attendancePercent ?? '-'}%</td>
+            </tr>
+        `;
+    });
+
+    // แสดงรายชื่อขาด–ลา
+    linePreview.innerHTML =
+        (lineData && lineData.length > 0)
+            ? lineData.map(d => `
+                <div>${d.date} | ${d.class} | ${d.subject} | ${d.id} ${d.name} | ${d.status}</div>
+            `).join("")
+            : `<p class="text-gray-500">ไม่มีนักเรียนที่ขาดหรือลา</p>`;
+} else {
                     throw new Error(response.error || 'Failed to load students from server.');
                 }
             } catch (error) {
