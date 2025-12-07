@@ -372,14 +372,6 @@
     try {
         const MODEL_URL = "https://cdn.jsdelivr.net/gh/vladmandic/face-api/model/";
 
-        // ปิด SSD-Mobilenetv1 ให้ใช้งาน TinyFaceDetector อย่างเดียว
-        if (faceapi?.nets?.ssdMobilenetv1) {
-            faceapi.nets.ssdMobilenetv1.load = async () => {};
-            faceapi.nets.ssdMobilenetv1.loadFromUri = async () => {};
-            faceapi.nets.ssdMobilenetv1.loadFromDisk = async () => {};
-            faceapi.nets.ssdMobilenetv1.isLoaded = true;
-        }
-
         await Promise.all([
             faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
             faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
@@ -551,18 +543,35 @@
             
             try {
                 const response = await apiCall({ action: 'getDashboardSummary', data: { date: selectedDate, period: period } });
-                const tableBody = document.getElementById('subject-summary-table-body');
-                tableBody.innerHTML = '';
-                if (response.success && response.data.length > 0) {
-                     response.data.forEach(item => {
-                        const row = `
-                            <tr class="dark:border-gray-700">
-                                <td class="p-2 font-medium">${item.subject}</td>
-                                <td class="p-2 text-center">${item.present}</td>
-                                <td class="p-2 text-center">${item.absentOrLeave}</td>
-                            </tr>`;
-                        tableBody.innerHTML += row;
-                     });
+                const tableBody = document.getElementById("report-table-body");
+tableBody.innerHTML = "";
+
+summary.forEach(item => {
+    const total = item.present + item.absent + item.leave;
+    const percent = total > 0 ? ((item.present / total) * 100).toFixed(2) : "0.00";
+
+    let percentClass = "text-gray-400";
+    const p = parseFloat(percent);
+
+    if (p >= 80) percentClass = "text-green-500 font-bold";
+    else if (p >= 50) percentClass = "text-yellow-400 font-bold";
+    else percentClass = "text-red-500 font-bold";
+
+    const row = `
+        <tr>
+            <td class="p-3">${item.class}</td>
+            <td class="p-3">${item.subject}</td>
+            <td class="p-3 text-center">${item.totalStudents}</td>
+            <td class="p-3 text-center">${item.present}</td>
+            <td class="p-3 text-center">${item.absent}</td>
+            <td class="p-3 text-center">${item.leave}</td>
+            <td class="p-3 text-center"><span class="${percentClass}">${percent}%</span></td>
+        </tr>
+    `;
+
+    tableBody.innerHTML += row;
+});
+
                 } else {
                      tableBody.innerHTML = '<tr><td colspan="3" class="text-center p-4 text-gray-500">ไม่มีข้อมูลการเช็คชื่อในวันนี้</td></tr>';
                 }
