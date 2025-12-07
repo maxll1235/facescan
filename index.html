@@ -1050,10 +1050,10 @@
 
                     if (response.success) {
     const { summary, lineData } = response.data || {};
-    // ป้องกันกรณี server ไม่ส่ง lineData มา
+    // ป้องกัน lineData ไม่มี
     lastReportDataForLine = Array.isArray(lineData) ? lineData : [];
-    return data;
-    // ถ้าอยากให้ปุ่มเปิดได้เฉพาะเมื่อมีข้อมูลที่ส่งได้:
+
+    // เปิดปุ่มส่ง LINE ถ้ามีข้อมูล
     document.getElementById('send-line-btn').disabled = lastReportDataForLine.length === 0;
 }
 
