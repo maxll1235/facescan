@@ -373,10 +373,14 @@
         const MODEL_URL = "https://cdn.jsdelivr.net/gh/vladmandic/face-api/model/";
 
         await Promise.all([
-            faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-            faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-            faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
-        ]);
+    faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+    faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+    faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+]);
+
+// ป้องกัน error: SsdMobilenetv1 - load model before inference
+faceapi.nets.ssdMobilenetv1.dispose();
+
 
         console.log("FaceAPI Models Loaded Successfully (TinyFaceDetector)");
         console.log("tiny:", faceapi.nets.tinyFaceDetector.isLoaded);
