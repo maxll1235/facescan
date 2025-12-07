@@ -1150,7 +1150,7 @@
         : "0.00";
 
     // เลือกสีตาม % การเข้าเรียน
-    let percentClass = "text-gray-400"; // default = เทา
+    let percentClass = "text-gray-400"; 
     const p = parseFloat(percent);
 
     if (p >= 80) percentClass = "text-green-500 font-bold";
@@ -1172,7 +1172,6 @@
     `;
     tableBody.innerHTML += row;
 });
-
 
         function showStudentDetail(className, subjectName) {
             const detailContainer = document.getElementById('student-detail-container');
