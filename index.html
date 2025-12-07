@@ -463,7 +463,6 @@
         
        async function loadStudentData() {
     const rosterLoading = document.getElementById('roster-loading');
-    if (students.length > 0) return;
 
     try {
         if (rosterLoading) rosterLoading.style.display = 'block';
@@ -473,19 +472,22 @@
         if (response.success) {
             students = response.data || [];
         } else {
-            throw new Error(response.error || 'Failed to load students.');
+            throw new Error(response.error || 'Failed to load students from server.');
         }
 
     } catch (error) {
         console.error('Error loading students:', error);
         alert('เกิดข้อผิดพลาดในการโหลดข้อมูลนักเรียน');
+        students = [];
+
     } finally {
-        if (rosterLoading) {
+        if (rosterLoading && rosterLoading.style.display !== 'none') {
             renderStudentRosterForDashboard();
             rosterLoading.style.display = 'none';
         }
     }
 }
+
 
         // --- DASHBOARD ---
         function renderStudentRosterForDashboard() {
