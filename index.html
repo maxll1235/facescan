@@ -1058,18 +1058,35 @@
 }
 
                     summary.forEach(item => {
-                        const row = `<tr>
-                                <td class="p-3 text-left">${item.class}</td>
-                                <td class="p-3 text-left">${item.subject}</td>
-                                <td class="p-3 text-center">${item.totalStudents}</td>
-                                <td class="p-3 text-center">${item.present}</td>
-                                <td class="p-3 text-center">${item.absent}</td>
-                                <td class="p-3 text-center">${item.leave}</td>
-                                <td class="p-3 text-center font-bold">${item.totalPresent}</td>
-                                <td class="p-3 text-center font-bold">${item.attendancePercent}%</td>
-                            </tr>`;
-                        reportTableBody.innerHTML += row;
-                    });
+    const total = item.present + item.absent + item.leave;
+    const percent = total > 0 
+        ? ((item.present / total) * 100).toFixed(2)
+        : "0.00";
+
+    // เลือกสีตาม % การเข้าเรียน
+    let percentClass = "text-gray-400"; 
+    const p = parseFloat(percent);
+
+    if (p >= 80) percentClass = "text-green-500 font-bold";
+    else if (p >= 50) percentClass = "text-yellow-400 font-bold";
+    else percentClass = "text-red-500 font-bold";
+
+    const row = `
+        <tr class="summary-row">
+            <td class="p-3">${item.class}</td>
+            <td class="p-3">${item.subject}</td>
+            <td class="p-3 text-center">${item.totalStudents}</td>
+            <td class="p-3 text-center">${item.present}</td>
+            <td class="p-3 text-center">${item.absent}</td>
+            <td class="p-3 text-center">${item.leave}</td>
+            <td class="p-3 text-center">
+                <span class="${percentClass}">${percent}%</span>
+            </td>
+        </tr>
+    `;
+    tableBody.innerHTML += row;
+});
+
                     linePreview.innerHTML = lineData.map(d => `<div>${d.date} | ${d.class} | ${d.subject} | ${d.id} ${d.name} | ${d.status}</div>`).join('') || '<p class="text-gray-500">ไม่มีนักเรียนที่ขาดหรือลา</p>';
                     document.getElementById('report-title').innerText = `ผลลัพธ์สำหรับวันที่ ${new Date(reportData.dateFilter).toLocaleDateString('th-TH')}`;
                     sendLineBtn.disabled = false;
@@ -1143,6 +1160,56 @@
                 classFilter.add(new Option(className, className));
             });
         }
+        async function generateSummaryReport() {
+    const tableBody = document.getElementById('summary-table-body');
+    const exportBtn = document.getElementById('export-excel-btn');
+    
+    // ล้างข้อมูลเก่า
+    tableBody.innerHTML = `
+        <tr>
+            <td colspan="7" class="text-center p-8">
+                <div class="loader w-8 h-8 rounded-full border-4 border-gray-200 mx-auto"></div>
+                <p>กำลังประมวลผลสรุปผล...</p>
+            </td>
+        </tr>`;
+
+    document.getElementById('student-detail-container').classList.add('hidden');
+    exportBtn.classList.add('hidden');
+
+    // ดึงค่า Filter
+    const filters = {
+        classFilter: document.getElementById('summary-class-filter').value,
+        period: document.getElementById('summary-period-filter').value,
+        date: document.getElementById('summary-date-filter').value + "-01"
+    };
+
+    try {
+        const response = await apiCall({
+            action: 'getAttendanceSummaryReport',
+            data: filters
+        });
+
+        if (!response.success) {
+            throw new Error(response.error || "Unknown error");
+        }
+
+        const { summary, details, allStudents, scores } = response.data;
+        summaryReportData = response.data; // เก็บไว้ใช้แสดงรายบุคคล และ export
+
+        tableBody.innerHTML = "";
+
+        if (!summary || summary.length === 0) {
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="text-center p-6 text-gray-500">
+                        ไม่พบข้อมูลตามเงื่อนไขที่เลือก
+                    </td>
+                </tr>`;
+            return;
+        }
+
+        exportBtn.classList.remove('hidden');
+
         summary.forEach(item => {
     const total = item.present + item.absent + item.leave;
     const percent = total > 0 
@@ -1172,6 +1239,16 @@
     `;
     tableBody.innerHTML += row;
 });
+
+    } catch (err) {
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="7" class="text-center p-8 text-red-500">
+                    เกิดข้อผิดพลาด: ${err.message}
+                </td>
+            </tr>`;
+    }
+}
 
         function showStudentDetail(className, subjectName) {
             const detailContainer = document.getElementById('student-detail-container');
