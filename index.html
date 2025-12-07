@@ -348,6 +348,25 @@
       applyTheme(newTheme);
   }
 
+async function getGASUrl() {
+    let url = localStorage.getItem("gasWebAppUrl");
+
+    if (!url) {
+        url = prompt("กรุณาวาง URL Google Apps Script Web App:");
+        if (url) {
+            localStorage.setItem("gasWebAppUrl", url);
+        } else {
+            alert("ต้องใส่ URL เพื่อใช้งานระบบ");
+        }
+    }
+    return url;
+}
+
+function resetGASUrl() {
+    localStorage.removeItem("gasWebAppUrl");
+    alert("รีเซ็ต URL แล้ว! รีเฟรชหน้าเว็บเพื่อกรอกใหม่");
+}
+
   // --- INITIALIZATION ---
   window.onload = async () => {
     lucide.createIcons();
