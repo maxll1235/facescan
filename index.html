@@ -1144,70 +1144,80 @@
             });
         }
         async function generateSummaryReport() {
-            const tableBody = document.getElementById('summary-table-body');
-            tableBody.innerHTML = `<tr><td colspan="7" class="text-center p-8"><div class="loader w-8 h-8 rounded-full border-4 border-gray-200 mx-auto"></div><p>กำลังประมวลผลสรุปผล...</p></td></tr>`;
-            document.getElementById('student-detail-container').classList.add('hidden');
-            document.getElementById('export-excel-btn').classList.add('hidden');
+    const tableBody = document.getElementById('summary-table-body');
+    const exportBtn = document.getElementById('export-excel-btn');
+    
+    // ล้างข้อมูลเก่า
+    tableBody.innerHTML = `
+        <tr>
+            <td colspan="7" class="text-center p-8">
+                <div class="loader w-8 h-8 rounded-full border-4 border-gray-200 mx-auto"></div>
+                <p>กำลังประมวลผลสรุปผล...</p>
+            </td>
+        </tr>`;
 
-            const dateValue = document.getElementById('summary-date-filter').value;
-            const filters = {
-                classFilter: document.getElementById('summary-class-filter').value,
-                period: document.getElementById('summary-period-filter').value,
-                date: `${dateValue}-01`,
-            };
+    document.getElementById('student-detail-container').classList.add('hidden');
+    exportBtn.classList.add('hidden');
 
-            try {
-                const response = await apiCall({ action: 'getAttendanceSummaryReport', data: filters });
-                if (response.success) {
-    const { summary, lineData } = response.data || {};
+    // ดึงค่า Filter
+    const filters = {
+        classFilter: document.getElementById('summary-class-filter').value,
+        period: document.getElementById('summary-period-filter').value,
+        date: document.getElementById('summary-date-filter').value + "-01"
+    };
 
-    // ป้องกัน lineData ไม่มีใน response
-    lastReportDataForLine = Array.isArray(lineData) ? lineData : [];
+    try {
+        const response = await apiCall({
+            action: 'getAttendanceSummaryReport',
+            data: filters
+        });
 
-    reportTableBody.innerHTML = '';
-    if (!summary || summary.length === 0) {
-        reportTableBody.innerHTML = `
-            <tr><td colspan="8" class="text-center p-8 text-gray-500">
-                ไม่พบข้อมูลตามเงื่อนไขที่เลือก
-            </td></tr>`;
-        linePreview.innerHTML = '<p class="text-gray-500">ไม่พบข้อมูล</p>';
-        return;
-    }
-
-    summary.forEach(item => {
-        const row = `
-            <tr>
-                <td class="p-3 text-left">${item.class}</td>
-                <td class="p-3 text-left">${item.subject}</td>
-                <td class="p-3 text-center">${item.totalStudents}</td>
-                <td class="p-3 text-center">${item.present}</td>
-                <td class="p-3 text-center">${item.absent}</td>
-                <td class="p-3 text-center">${item.leave}</td>
-                <td class="p-3 text-center font-bold">${item.totalPresent}</td>
-                <td class="p-3 text-center font-bold">${item.attendancePercent}%</td>
-            </tr>`;
-        reportTableBody.innerHTML += row;
-    });
-
-    linePreview.innerHTML =
-        lastReportDataForLine.length > 0
-            ? lastReportDataForLine
-                .map(d => `<div>${d.date} | ${d.class} | ${d.subject} | ${d.id} ${d.name} | ${d.status}</div>`)
-                .join('')
-            : '<p class="text-gray-500">ไม่มีนักเรียนที่ขาดหรือลา</p>';
-
-    document.getElementById('report-title').innerText =
-        `ผลลัพธ์สำหรับวันที่ ${new Date(reportData.dateFilter).toLocaleDateString('th-TH')}`;
-
-    sendLineBtn.disabled = lastReportDataForLine.length === 0;
-}
-else {
-                    throw new Error(response.error);
-                }
-            } catch (err) {
-                tableBody.innerHTML = `<tr><td colspan="7" class="text-center p-8 text-red-500">เกิดข้อผิดพลาด: ${err.message}</td></tr>`;
-            }
+        if (!response.success) {
+            throw new Error(response.error || "Unknown error");
         }
+
+        const { summary, details, allStudents, scores } = response.data;
+        summaryReportData = response.data; // เก็บไว้ใช้แสดงรายบุคคล และ export
+
+        tableBody.innerHTML = "";
+
+        if (!summary || summary.length === 0) {
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="text-center p-6 text-gray-500">
+                        ไม่พบข้อมูลตามเงื่อนไขที่เลือก
+                    </td>
+                </tr>`;
+            return;
+        }
+
+        exportBtn.classList.remove('hidden');
+
+        summary.forEach(item => {
+            const row = `
+                <tr>
+                    <td class="p-3">${item.class}</td>
+                    <td class="p-3">${item.subject}</td>
+                    <td class="p-3 text-center">${item.totalStudents}</td>
+                    <td class="p-3 text-center">${item.present}</td>
+                    <td class="p-3 text-center">${item.absent}</td>
+                    <td class="p-3 text-center">${item.leave}</td>
+                    <td class="p-3 text-center font-bold">${item.attendancePercent}%</td>
+                </tr>
+            `;
+            tableBody.innerHTML += row;
+        });
+
+    } catch (err) {
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="7" class="text-center p-8 text-red-500">
+                    เกิดข้อผิดพลาด: ${err.message}
+                </td>
+            </tr>`;
+    }
+}
+
         function showStudentDetail(className, subjectName) {
             const detailContainer = document.getElementById('student-detail-container');
             const detailTableBody = document.getElementById('student-detail-table-body');
