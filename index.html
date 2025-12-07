@@ -1391,21 +1391,20 @@
 
         // --- UTILITIES ---
         function getLocation() {
-          if (navigator.geolocation) {
-               navigator.geolocation.getCurrentPosition(
-                 pos => {
-                  currentGeoLocation = {
-                      lat: pos.coords.latitude,
-                      lng: pos.coords.longitude
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            pos => {
+                currentGeoLocation = {
+                    lat: pos.coords.latitude,
+                    lng: pos.coords.longitude
                 };
-             },
-             () => {
-                  console.warn('Could not get location.');
+            },
+            () => {
+                console.warn('Could not get location.');
             }
         );
     }
 }
-
 </script>
 </body>
 </html>
