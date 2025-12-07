@@ -6,7 +6,7 @@
     <title>ระบบเช็คชื่อนักเรียนอัจฉริยะ</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/vladmandic/face-api/dist/face-api.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
     <style>
@@ -307,1097 +307,1010 @@
     <div id="student-modal" class="fixed inset-0 bg-gray-800 bg-opacity-70 flex items-center justify-center p-4 z-40 hidden"><div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 md:p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto custom-scrollbar"><h2 id="modal-title" class="text-2xl font-bold mb-6">เพิ่มข้อมูลนักเรียน</h2><form id="student-form" onsubmit="handleStudentFormSubmit(event)"><input type="hidden" id="student-row-index"><div class="grid grid-cols-1 md:grid-cols-2 gap-6"><div><label for="student-id" class="block font-medium mb-2">รหัสนักเรียน</label><input type="text" id="student-id" class="w-full border-gray-300 dark:border-gray-600 dark:bg-gray-700 rounded-lg p-3" required><label for="student-name" class="block font-medium mb-2 mt-4">ชื่อ-สกุล</label><input type="text" id="student-name" class="w-full border-gray-300 dark:border-gray-600 dark:bg-gray-700 rounded-lg p-3" required><label for="student-class" class="block font-medium mb-2 mt-4">ชั้นเรียน</label><input type="text" id="student-class" class="w-full border-gray-300 dark:border-gray-600 dark:bg-gray-700 rounded-lg p-3" required></div><div class="flex flex-col"><label class="block font-medium mb-2">รูปภาพนักเรียน</label><div id="input-upload" class="flex flex-col items-center"><div class="w-full max-w-xs mx-auto aspect-[4/3] bg-gray-200 dark:bg-gray-700 rounded-lg flex items-center justify-center overflow-hidden"><img id="image-preview" src="https://placehold.co/400x300/e2e8f0/475569?text=Image" class="w-full h-full object-cover"></div><input type="file" id="image-upload-input" accept="image/*" class="hidden"><button type="button" onclick="document.getElementById('image-upload-input').click()" class="bg-indigo-600 text-white px-4 py-2 mt-4 rounded-lg hover:bg-indigo-700 w-full max-w-xs">เลือกไฟล์รูปภาพ</button></div></div></div><input type="hidden" id="student-image-data"><div class="flex justify-end space-x-4 mt-8"><button type="button" onclick="closeStudentModal()" class="bg-gray-200 text-gray-700 dark:bg-gray-600 dark:text-gray-300 px-6 py-2 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500">ยกเลิก</button><button type="submit" id="form-submit-btn" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700">บันทึก</button></div></form></div></div>
 
     <script>
-  // --- GLOBAL STATE & CONFIG ---
-  let gasWebAppUrl = '';
-  let faceMatcher = null, pieChart;
-  let students = [], attendance = [], checkedInToday = new Map();
-  let isScanning = false, recognitionInterval = null;
-  let currentGeoLocation = null;
-  let currentSubject = '';
-  let lastReportDataForLine = [];
-  let studentSortOrder = 'asc';
-  let summaryReportData = {}; 
-
-  // --- THEME ---
-  function applyTheme(theme) {
-      const chartTextColor = theme === 'dark' ? 'rgba(229, 231, 235, 0.8)' : 'rgba(55, 65, 81, 0.9)';
-      const chartGridColor = theme === 'dark' ? 'rgba(75, 85, 99, 0.5)' : 'rgba(209, 213, 219, 0.5)';
-      if (theme === 'dark') {
-          document.documentElement.classList.add('dark');
-          document.getElementById('theme-icon-sun').classList.remove('hidden');
-          document.getElementById('theme-icon-moon').classList.add('hidden');
-      } else {
-          document.documentElement.classList.remove('dark');
-          document.getElementById('theme-icon-sun').classList.add('hidden');
-          document.getElementById('theme-icon-moon').classList.remove('hidden');
-      }
-      Chart.defaults.color = chartTextColor;
-      Chart.defaults.borderColor = chartGridColor;
-      if (pieChart) renderDashboard();
-      lucide.createIcons();
-  }
-  function toggleTheme() {
-      const newTheme = document.documentElement.classList.contains('dark') ? 'light' : 'dark';
-      localStorage.setItem('theme', newTheme);
-      applyTheme(newTheme);
-  }
-
-  // --- INITIALIZATION ---
-  window.onload = async () => {
-    lucide.createIcons();
-
-    const savedTheme = localStorage.getItem('theme') ||
-        (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-    applyTheme(savedTheme);
-
-    // ✅ แก้ตรงนี้
-    // 🔥 ตั้งค่า URL แบบตายตัว ไม่ต้องใช้ prompt
-gasWebAppUrl = "https://script.google.com/macros/s/AKfycby10ffnq5oO4TcMV5hyx27Fv9ToOlVsoTkvqgFuJfhFGQOIHk4K8_axSqCid3u_Ls559A/exec";
-
-
-    await initializeApp();
-    getLocation();
-    
-    const today = new Date();
-    const yyyy = today.getFullYear();
-    const mm = String(today.getMonth() + 1).padStart(2, '0');
-    
-    document.getElementById('dashboard-date').valueAsDate = today;
-    document.getElementById('report-date-filter').valueAsDate = today;
-    document.getElementById('summary-date-filter').value = `${yyyy}-${mm}`;
-
-    document.getElementById('dashboard-date').addEventListener('change', renderDashboard);
-    document.getElementById('summary-period').addEventListener('change', renderDashboard);
-    document.getElementById('image-upload-input').addEventListener('change', handleImageUpload);
-};
-
-
-  async function initializeApp() {
-      try {
-          if (typeof faceapi === 'undefined') throw new Error('face-api.js has not been loaded.');
-          const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/';
-          await Promise.all([
-              faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
-              faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-              faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
-          ]);
-      } catch (error) {
-          console.error('Initialization failed:', error);
-          alert('ไม่สามารถโหลดโมเดล AI ได้ กรุณาลองรีเฟรชหน้าเว็บ');
-          return;
-      }
-      switchTab('dashboard');
-  }
-  
-  // --- UI & NAVIGATION ---
-  async function switchTab(tabName) {
-      stopScanning(false);
-      ['dashboard', 'attendance', 'manage', 'report', 'summary'].forEach(name => {
-          const contentEl = document.getElementById(`content-${name}`);
-          const tabEl = document.getElementById(`tab-${name}`);
-          if (contentEl) contentEl.classList.add('hidden');
-          if (tabEl) {
-              tabEl.classList.remove('bg-blue-600', 'text-white');
-              tabEl.classList.add('text-gray-600', 'dark:text-gray-300');
-          }
-      });
-      document.getElementById(`content-${tabName}`).classList.remove('hidden');
-      const activeTab = document.getElementById(`tab-${tabName}`);
-      if (activeTab) {
-        activeTab.classList.add('bg-blue-600', 'text-white');
-        activeTab.classList.remove('text-gray-600', 'dark:text-gray-300');
-      }
-      
-      if (tabName === 'dashboard') {
-          await loadStudentData();
-          await loadAttendanceDataForDashboard();
-      } else if (tabName === 'manage') { 
-          await loadStudentDataForTable();
-      } else if (tabName === 'attendance') {
-          await loadStudentDataForRecognition();
-          await loadSubjects();
-      } else if (tabName === 'report') {
-          await loadStudentData();
-          loadDataForReportFilters();
-      } else if (tabName === 'summary') {
-          await loadStudentData();
-          loadDataForSummaryFilters();
-      }
-  }
-  
-  // --- DATA LOADING ---
-  async function apiCall(payload) {
-      if (!gasWebAppUrl) {
-          alert('กรุณาตั้งค่า Google Apps Script URL ก่อน โดยการรีเฟรชหน้าเว็บ');
-          return { success: false, error: 'GAS URL not configured' };
-      }
-      try {
-          const response = await fetch(gasWebAppUrl, {
-              method: 'POST',
-              mode: 'cors',
-              redirect: 'follow',
-              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-              body: JSON.stringify(payload)
-          });
-          if (!response.ok) {
-              throw new Error(`HTTP error! status: ${response.status}`);
-          }
-          return await response.json();
-      } catch (error) {
-          console.error('API Call Error:', error);
-          alert(`เกิดข้อผิดพลาดในการเชื่อมต่อกับ Server:\n${error.message}`);
-          return { success: false, error: error.message };
-      }
-  }
-  
-  async function loadStudentData() {
-      const rosterLoading = document.getElementById('roster-loading');
-      if (students.length > 0) return;
-      try {
-          if (rosterLoading) rosterLoading.style.display = 'block';
-          const response = await apiCall({ action: 'getStudents' });
-          if (response.success) {
-              students = response.data;
-          } else {
-              throw new Error(response.error || 'Failed to load students from server.');
-          }
-      } catch (error) {
-          console.error('Error loading students:', error);
-          alert('เกิดข้อผิดพลาดในการโหลดข้อมูลนักเรียน');
-          students = [];
-      } finally {
-          if (rosterLoading && rosterLoading.style.display !== 'none') {
-              renderStudentRosterForDashboard();
-              rosterLoading.style.display = 'none';
-          }
-      }
-  }
-
-  // --- DASHBOARD ---
-  function renderStudentRosterForDashboard() {
-      const rosterGrid = document.getElementById('student-roster-grid');
-      if (!rosterGrid) return;
-      rosterGrid.innerHTML = '';
-      if (students.length === 0) {
-          rosterGrid.innerHTML = `<p class="col-span-full text-center text-gray-500">ยังไม่มีข้อมูลนักเรียนในระบบ</p>`;
-      } else {
-          students.forEach(student => {
-              const card = document.createElement('div');
-              card.className = 'bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg text-center';
-              card.innerHTML = `
-                <img src="${student.imagedatabase64 || 'https://placehold.co/150x150/e2e8f0/475569?text=No+Image'}"
-                     class="w-24 h-24 rounded-full object-cover mx-auto mb-2 border-2 border-gray-300 dark:border-gray-600">
-                <p class="font-semibold text-sm truncate">${student.name}</p>
-                <p class="text-xs text-gray-500">${student.studentid}</p>
-                <p class="text-xs text-gray-500">${student.class}</p>`;
-              rosterGrid.appendChild(card);
-          });
-      }
-  }
-
-  async function loadAttendanceDataForDashboard() {
-      try {
-          const response = await apiCall({ action: 'getAttendance' });
-          if (response.success) {
-              attendance = response.data.map(rec => ({ ...rec, timestamp: new Date(rec.timestamp) }));
-              renderDashboard();
-          }
-      } catch (error) {
-          console.error('Error loading attendance:', error);
-      }
-  }
-
-  async function renderDashboard() {
-      const selectedDate = document.getElementById('dashboard-date').value;
-      const period = document.getElementById('summary-period').value;
-      let filteredForOverall;
-      if (period === 'day') {
-          filteredForOverall = attendance.filter(
-            rec => new Date(rec.timestamp).toDateString() === new Date(selectedDate).toDateString()
-          );
-      } else if (period === 'week') {
-          const startOfWeek = new Date(selectedDate);
-          startOfWeek.setDate(new Date(selectedDate).getDate() - new Date(selectedDate).getDay());
-          startOfWeek.setHours(0, 0, 0, 0);
-          const endOfWeek = new Date(startOfWeek);
-          endOfWeek.setDate(startOfWeek.getDate() + 6);
-          endOfWeek.setHours(23, 59, 59, 999);
-          filteredForOverall = attendance.filter(rec => rec.timestamp >= startOfWeek && rec.timestamp <= endOfWeek);
-      } else {
-          filteredForOverall = attendance.filter(rec =>
-              rec.timestamp.getFullYear() === new Date(selectedDate).getFullYear() &&
-              rec.timestamp.getMonth() === new Date(selectedDate).getMonth()
-          );
-      }
-      
-      let presentCount = 0, absentOrLeaveCount = 0;
-      const uniqueDailyChecks = new Set();
-      filteredForOverall.forEach(rec => {
-          const key = `${rec.timestamp.toDateString()}-${rec.studentid}-${rec.subject}`;
-          if (uniqueDailyChecks.has(key)) return;
-          if (rec.status === 'มาเรียน') {
-              presentCount++;
-          } else {
-              absentOrLeaveCount++;
-          }
-          uniqueDailyChecks.add(key);
-      });
-      document.getElementById('stat-present').innerText = presentCount;
-      document.getElementById('stat-absent').innerText = absentOrLeaveCount;
-      renderPieChart(presentCount, absentOrLeaveCount);
-      
-      try {
-          const response = await apiCall({ action: 'getDashboardSummary', data: { date: selectedDate, period } });
-          const tableBody = document.getElementById('subject-summary-table-body');
-          tableBody.innerHTML = '';
-          if (response.success && response.data.length > 0) {
-              response.data.forEach(item => {
-                  const row = `
-                      <tr class="dark:border-gray-700">
-                          <td class="p-2 font-medium">${item.subject}</td>
-                          <td class="p-2 text-center">${item.present}</td>
-                          <td class="p-2 text-center">${item.absentOrLeave}</td>
-                      </tr>`;
-                  tableBody.innerHTML += row;
-              });
-          } else {
-              tableBody.innerHTML = '<tr><td colspan="3" class="text-center p-4 text-gray-500">ไม่มีข้อมูลการเช็คชื่อในวันนี้</td></tr>';
-          }
-      } catch (error) {
-          console.error('Error fetching dashboard summary:', error);
-          document.getElementById('subject-summary-table-body').innerHTML =
-              '<tr><td colspan="3" class="text-center p-4 text-red-500">โหลดข้อมูลล้มเหลว</td></tr>';
-      }
-  }
-
-  function renderPieChart(present, absent) {
-      const pieCanvas = document.getElementById('attendance-pie-chart');
-      if (!pieCanvas) return;
-      const ctx = pieCanvas.getContext('2d');
-      if (pieChart) pieChart.destroy();
-      const total = present + absent;
-      if (total === 0) {
-          pieChart = new Chart(ctx, {
-              type: 'pie',
-              data: { labels: ['ไม่มีข้อมูล'], datasets: [{ data: [1], backgroundColor: ['#d1d5db'] }] },
-              options: { plugins: { legend: { display: false }, tooltip: { enabled: false } } }
-          });
-          return;
-      }
-      pieChart = new Chart(ctx, {
-          type: 'pie',
-          data: {
-              labels: ['มาเรียน', 'ขาด/ลา'],
-              datasets: [{ data: [present, absent], backgroundColor: ['#34D399', '#F87171'] }]
-          },
-          options: { responsive: true, maintainAspectRatio: false }
-      });
-  }
-  
-  // --- ATTENDANCE PROCESS ---
-  async function loadSubjects() {
-      try {
-          const response = await apiCall({ action: 'getSubjects' });
-          const subjectSelect = document.getElementById('subject-select');
-          subjectSelect.innerHTML = '<option value="">-- กรุณาเลือกรายวิชา --</option>';
-          if (response.success && response.data.length > 0) {
-              response.data.forEach(subject => {
-                  const option = new Option(subject, subject);
-                  subjectSelect.appendChild(option);
-              });
-          }
-          subjectSelect.onchange = () => {
-              const hasValue = !!subjectSelect.value;
-              document.getElementById('start-scan-btn').disabled = !hasValue;
-              document.getElementById('manual-check-btn').disabled = !hasValue;
-          };
-      } catch (error) {
-          console.error('Error loading subjects:', error);
-      }
-  }
-
-  function startScanning() {
-      const selectedSubject = document.getElementById('subject-select').value;
-      if (!selectedSubject) {
-          alert('กรุณาเลือกรายวิชาก่อน');
-          return;
-      }
-      currentSubject = selectedSubject; 
-      document.getElementById('current-subject-display').innerText = `| วิชา: ${currentSubject}`;
-      checkedInToday.clear();
-      document.getElementById('start-scan-section').classList.add('hidden');
-      document.getElementById('scanning-section').classList.remove('hidden');
-      document.getElementById('absence-management-section').classList.add('hidden');
-      isScanning = true;
-      startVideo();
-  }
-
-  async function startManualCheck() {
-      const selectedSubject = document.getElementById('subject-select').value;
-      if (!selectedSubject) {
-          alert('กรุณาเลือกรายวิชาก่อน');
-          return;
-      }
-      
-      currentSubject = selectedSubject;
-      document.getElementById('current-subject-display').innerText = `| วิชา: ${currentSubject}`;
-      checkedInToday.clear();
-      
-      try {
-          const response = await apiCall({ 
-              action: 'getTodaysAttendanceBySubject', 
-              data: { subject: currentSubject, date: new Date().toISOString().split('T')[0] } 
-          });
-          if (response.success && response.data) {
-              response.data.forEach(rec => {
-                  checkedInToday.set(String(rec.studentid), rec);
-              });
-          }
-      } catch (error) {
-          alert('ไม่สามารถดึงข้อมูลการเช็คชื่อเดิมได้');
-          console.error("Error fetching today's attendance:", error);
-      }
-
-      document.getElementById('start-scan-section').classList.add('hidden');
-      document.getElementById('scanning-section').classList.add('hidden');
-      populateAttendanceList();
-      document.getElementById('absence-management-section').classList.remove('hidden');
-  }
-
-  function populateAttendanceList() {
-      const studentList = document.getElementById('absent-list');
-      studentList.innerHTML = '';
-      
-      if (students.length > 0) {
-          students.forEach(student => {
-              const item = document.createElement('div');
-              item.className = 'flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg';
-              item.id = `student-row-${student.studentid}`;
-              
-              const studentInfoHtml = `
-                  <div class="flex items-center gap-3">
-                      <img src="${student.imagedatabase64 || 'https://placehold.co/40x40'}" class="w-10 h-10 rounded-full object-cover">
-                      <div>
-                          <p class="font-medium">${student.name}</p>
-                          <p class="text-sm text-gray-500">${student.studentid}</p>
-                      </div>
-                  </div>`;
-
-              item.innerHTML = studentInfoHtml +
-                `<div class="flex items-center gap-2" id="status-container-${student.studentid}"></div>`;
-              studentList.appendChild(item);
-              
-              renderStudentStatusControls(student.studentid);
-          });
-      }
-  }
-
-  function renderStudentStatusControls(studentId) {
-      const statusContainer = document.getElementById(`status-container-${studentId}`);
-      if (!statusContainer) return;
-
-      const existingRecord = checkedInToday.get(String(studentId));
-
-      if (existingRecord) {
-          let statusColor = 'text-gray-500';
-          if (existingRecord.status === 'มาเรียน') statusColor = 'text-green-600 dark:text-green-400';
-          else if (existingRecord.status === 'ขาด') statusColor = 'text-red-600 dark:text-red-400';
-          else if (existingRecord.status === 'ลา') statusColor = 'text-yellow-600 dark:text-yellow-400';
-
-          statusContainer.innerHTML = `
-              <p class="font-semibold text-sm ${statusColor}">${existingRecord.status}</p>
-              <button onclick="editStatus('${studentId}')" class="text-blue-600 hover:text-blue-800 text-sm p-1">
-                  <i data-lucide="edit-2" class="w-4 h-4"></i>
-              </button>`;
-      } else {
-          const buttonBaseClasses = "px-3 py-1 text-sm rounded-full transition-colors duration-200";
-          const defaultButtonClasses = "bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600";
-          statusContainer.innerHTML = `
-              <div class="flex gap-2 items-center" id="status-buttons-${studentId}">
-                  <button onclick="markStatus('${studentId}', 'มาเรียน')" class="${buttonBaseClasses} ${defaultButtonClasses}">มาเรียน</button>
-                  <button onclick="markStatus('${studentId}', 'ขาด')" class="${buttonBaseClasses} ${defaultButtonClasses}">ขาด</button>
-                  <button onclick="markStatus('${studentId}', 'ลา')" class="${buttonBaseClasses} ${defaultButtonClasses}">ลา</button>
-              </div>`;
-      }
-      lucide.createIcons();
-  }
-
-  function editStatus(studentId) {
-      const statusContainer = document.getElementById(`status-container-${studentId}`);
-      if (!statusContainer) return;
-
-      const buttonBaseClasses = "px-3 py-1 text-sm rounded-full transition-colors duration-200";
-      const defaultButtonClasses = "bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600";
-      statusContainer.innerHTML = `
-          <div class="flex gap-2 items-center" id="status-buttons-${studentId}">
-              <button onclick="markStatus('${studentId}', 'มาเรียน')" class="${buttonBaseClasses} ${defaultButtonClasses}">มาเรียน</button>
-              <button onclick="markStatus('${studentId}', 'ขาด')" class="${buttonBaseClasses} ${defaultButtonClasses}">ขาด</button>
-              <button onclick="markStatus('${studentId}', 'ลา')" class="${buttonBaseClasses} ${defaultButtonClasses}">ลา</button>
-          </div>`;
-      
-      const existingRecord = checkedInToday.get(String(studentId));
-      if (existingRecord) {
-          markStatus(studentId, existingRecord.status, false); 
-      }
-  }
-
-  function stopScanning(showStudentList = true) {
-      isScanning = false;
-      if (recognitionInterval) clearInterval(recognitionInterval);
-      recognitionInterval = null;
-
-      const video = document.getElementById('video');
-      if (video.srcObject) { 
-          video.srcObject.getTracks().forEach(track => track.stop());
-          video.srcObject = null;
-      }
-
-      document.getElementById('video-loader').style.display = 'flex';
-      document.getElementById('video-wrapper').classList.add('hidden');
-      document.getElementById('scanning-section').classList.add('hidden');
-      if (!showStudentList) {
-          document.getElementById('start-scan-section').classList.remove('hidden');
-          return;
-      }
-      
-      if (students.length > 0) {
-          document.getElementById('absence-management-section').classList.remove('hidden');
-          populateAttendanceList();
-      } else {
-          document.getElementById('start-scan-section').classList.remove('hidden');
-      }
-  }
-
-  function markStatus(studentId, status, rerender = true) {
-      const student = students.find(s => s.studentid == studentId);
-      if (!student) return;
-
-      const record = { 
-          id: student.studentid,
-          name: student.name,
-          class: student.class,
-          timestamp: new Date().toISOString(), 
-          location: currentGeoLocation ? `${currentGeoLocation.lat},${currentGeoLocation.lng}` : 'N/A', 
-          status,
-          subject: currentSubject
-      };
-      checkedInToday.set(String(student.studentid), record);
-      
-      if (rerender) {
-          renderStudentStatusControls(student.studentid);
-      } else {
-          const buttonContainer = document.getElementById(`status-buttons-${studentId}`);
-          if (!buttonContainer) return;
-          const allButtons = buttonContainer.querySelectorAll('button');
-          const defaultClasses = ['bg-gray-200', 'dark:bg-gray-700', 'text-gray-600', 'dark:text-gray-300', 'hover:bg-gray-300', 'dark:hover:bg-gray-600'];
-          const selectedClasses = ['bg-blue-600', 'text-white', 'dark:bg-blue-600', 'dark:text-white'];
-          allButtons.forEach(btn => {
-            btn.classList.remove(...selectedClasses);
-            btn.classList.add(...defaultClasses);
-          });
-          let selectedButton;
-          if (status === 'มาเรียน') selectedButton = allButtons[0];
-          else if (status === 'ขาด') selectedButton = allButtons[1];
-          else if (status === 'ลา') selectedButton = allButtons[2];
-          if (selectedButton) {
-            selectedButton.classList.remove(...defaultClasses);
-            selectedButton.classList.add(...selectedClasses);
-          }
-      }
-  }
-
-  async function finishAttendance() {
-      students.forEach(student => {
-          if (!checkedInToday.has(String(student.studentid))) {
-              const absentRecord = {
-                  id: student.studentid,
-                  name: student.name,
-                  class: student.class,
-                  timestamp: new Date().toISOString(),
-                  location: currentGeoLocation ? `${currentGeoLocation.lat},${currentGeoLocation.lng}` : 'N/A',
-                  status: 'ขาด',
-                  subject: currentSubject
-              };
-              checkedInToday.set(String(student.studentid), absentRecord);
-          }
-      });
-
-      const recordsToSave = Array.from(checkedInToday.values());
-
-      if (recordsToSave.length > 0) {
-          try {
-              const response = await apiCall({ 
-                  action: 'recordAttendanceBulk', 
-                  data: {
-                      records: recordsToSave,
-                      subject: currentSubject,
-                      date: new Date().toISOString().split('T')[0]
-                  } 
-              });
-              alert(response.success
-                    ? 'บันทึกข้อมูลการเช็คชื่อทั้งหมดเรียบร้อยแล้ว'
-                    : 'เกิดข้อผิดพลาดในการบันทึกข้อมูล: ' + response.error);
-          } catch (err) {
-              alert('เกิดข้อผิดพลาดรุนแรงในการบันทึกข้อมูล');
-          }
-      }
-
-      checkedInToday.clear();
-      document.getElementById('absence-management-section').classList.add('hidden');
-      document.getElementById('start-scan-section').classList.remove('hidden');
-      document.getElementById('start-scan-btn').disabled = true;
-      document.getElementById('manual-check-btn').disabled = true;
-      document.getElementById('subject-select').value = '';
-      currentSubject = '';
-      document.getElementById('current-subject-display').innerText = '';
-      switchTab('dashboard');
-  }
-
-  async function startVideo() {
-      try {
-          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-          const video = document.getElementById('video');
-          video.srcObject = stream;
-          video.onplay = () => {
-              document.getElementById('video-loader').style.display = 'none';
-              document.getElementById('video-wrapper').classList.remove('hidden');
-              const overlay = document.getElementById('overlay');
-              const displaySize = { width: video.clientWidth, height: video.clientHeight };
-              faceapi.matchDimensions(overlay, displaySize);
-              recognitionInterval = setInterval(async () => {
-                  if (!isScanning) return;
-                  const detections = await faceapi
-                                        .detectAllFaces(video)
-                                        .withFaceLandmarks()
-                                        .withFaceDescriptors();
-                  const resizedDetections = faceapi.resizeResults(detections, displaySize);
-                  overlay.getContext('2d').clearRect(0, 0, overlay.width, overlay.height);
-                  if (faceMatcher) {
-                      resizedDetections.forEach(d => {
-                          const bestMatch = faceMatcher.findBestMatch(d.descriptor);
-                          new faceapi.draw.DrawBox(d.detection.box, { label: bestMatch.toString() }).draw(overlay);
-                          if (bestMatch.label !== 'unknown') {
-                              const student = students.find(s => s.name === bestMatch.label);
-                              if (student && !checkedInToday.has(String(student.studentid))) {
-                                  handleRecognition(student);
-                              }
-                          }
-                      });
-                  }
-              }, 300);
-          };
-      } catch (err) {
-          document.getElementById('video-loading-text').innerText = 'ไม่สามารถเปิดกล้องได้!';
-          alert(`ไม่สามารถเปิดกล้องได้: ${err.name}`);
-          stopScanning(false);
-      }
-  }
-
-  async function loadStudentDataForRecognition() {
-      try {
-          await loadStudentData();
-          if (students.length > 0) {
-              const labeledFaceDescriptors = await Promise.all(
-                  students.map(async (student) => {
-                      if (student.imagedatabase64 && student.imagedatabase64.startsWith('data:image')) {
-                          try {
-                              const img = await faceapi.fetchImage(student.imagedatabase64);
-                              const detections = await faceapi
-                                  .detectSingleFace(img)
-                                  .withFaceLandmarks()
-                                  .withFaceDescriptor();
-                              if (detections) {
-                                  return new faceapi.LabeledFaceDescriptors(student.name, [detections.descriptor]);
-                              }
-                          } catch (e) {
-                              console.error(`Could not process image for ${student.name}`, e);
-                          }
-                      }
-                      return null;
-                  })
-              );
-              const validDescriptors = labeledFaceDescriptors.filter(Boolean);
-              faceMatcher = validDescriptors.length > 0 ? new faceapi.FaceMatcher(validDescriptors, 0.6) : null;
-          } else {
-              faceMatcher = null;
-          }
-      } catch (err) {
-          console.error('Error loading students for recognition:', err);
-      }
-  }
-
-  function handleRecognition(student) {
-      const record = {
-          id: student.studentid,
-          name: student.name,
-          class: student.class,
-          timestamp: new Date().toISOString(),
-          location: currentGeoLocation ? `${currentGeoLocation.lat},${currentGeoLocation.lng}` : 'N/A',
-          status: 'มาเรียน',
-          subject: currentSubject
-      };
-      checkedInToday.set(String(student.studentid), record);
-      
-      const successOverlay = document.getElementById('scan-success-overlay');
-      document.getElementById('scan-success-name').innerText = student.name;
-      successOverlay.classList.remove('hidden');
-      setTimeout(() => successOverlay.classList.add('hidden'), 2000);
-      
-      if (!document.getElementById('absence-management-section').classList.contains('hidden')) {
-          renderStudentStatusControls(student.studentid);
-      }
-  }
-  
-  // --- STUDENT MANAGEMENT ---
-  function handleImageUpload(event) {
-      const file = event.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = e => {
-          const img = new Image();
-          img.onload = () => {
-              const canvas = document.createElement('canvas');
-              const MAX_WIDTH = 500;
-              const scaleSize = MAX_WIDTH / img.width;
-              canvas.width = MAX_WIDTH;
-              canvas.height = img.height * scaleSize;
-              canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-              const dataUrl = canvas.toDataURL('image/jpeg');
-              document.getElementById('image-preview').src = dataUrl;
-              document.getElementById('student-image-data').value = dataUrl;
-          };
-          img.src = e.target.result;
-      };
-      reader.readAsDataURL(file);
-  }
-
-  function openStudentModal(student = null) {
-      document.getElementById('student-form').reset();
-      document.getElementById('image-preview').src = 'https://placehold.co/400x300/e2e8f0/475569?text=Image';
-      document.getElementById('student-image-data').value = '';
-
-      if (student) {
-          document.getElementById('modal-title').innerText = 'แก้ไขข้อมูลนักเรียน';
-          document.getElementById('student-row-index').value = student.rowIndex;
-          document.getElementById('student-id').value = student.studentid;
-          document.getElementById('student-name').value = student.name;
-          document.getElementById('student-class').value = student.class;
-          document.getElementById('student-image-data').value = student.imagedatabase64 || '';
-          if (student.imagedatabase64) {
-            document.getElementById('image-preview').src = student.imagedatabase64;
-          }
-      } else {
-          document.getElementById('modal-title').innerText = 'เพิ่มข้อมูลนักเรียน';
-      }
-      document.getElementById('student-modal').classList.remove('hidden');
-  }
-
-  function closeStudentModal() { 
-      document.getElementById('student-modal').classList.add('hidden');
-  }
-
-  async function loadStudentDataForTable() {
-      try {
-          await loadStudentData();
-          studentSortOrder = 'desc';
-          sortStudentTable();
-      } catch (err) {
-          console.error('Error loading students for table:', err);
-          students = [];
-          renderStudentTable();
-      }
-  }
-
-  function renderStudentTable() {
-      const tableBody = document.getElementById('student-table-body');
-      tableBody.innerHTML = '';
-      if (students.length === 0) {
-          tableBody.innerHTML = '<tr><td colspan="4" class="text-center p-4 text-gray-500">ยังไม่มีข้อมูลนักเรียน</td></tr>';
-          return;
-      }
-      
-      students.forEach(student => {
-          const row = document.createElement('tr');
-          row.innerHTML = `
-            <td class="p-3">${student.studentid}</td>
-            <td class="p-3">${student.name}</td>
-            <td class="p-3">${student.class}</td>
-            <td class="p-3 text-center"></td>`;
-          
-          const actionsCell = row.cells[3];
-          const editButton = document.createElement('button');
-          editButton.className = 'text-blue-600 p-1';
-          editButton.textContent = 'แก้ไข';
-          editButton.onclick = () => openStudentModal(students.find(s => s.rowIndex === student.rowIndex));
-          
-          const deleteButton = document.createElement('button');
-          deleteButton.className = 'text-red-600 p-1 ml-2';
-          deleteButton.textContent = 'ลบ';
-          deleteButton.onclick = () => deleteStudent(student.rowIndex);
-
-          actionsCell.appendChild(editButton);
-          actionsCell.appendChild(deleteButton);
-          tableBody.appendChild(row);
-      });
-  }
-
-  function sortStudentTable() {
-      studentSortOrder = studentSortOrder === 'asc' ? 'desc' : 'asc';
-      students.sort((a, b) => {
-          const idA = a.studentid;
-          const idB = b.studentid;
-          if (studentSortOrder === 'asc') {
-              return idA.localeCompare(idB, undefined, { numeric: true });
-          } else {
-              return idB.localeCompare(idA, undefined, { numeric: true });
-          }
-      });
-      renderStudentTable();
-  }
-
-  async function handleStudentFormSubmit(event) {
-      event.preventDefault();
-      const submitBtn = document.getElementById('form-submit-btn');
-      submitBtn.disabled = true;
-      submitBtn.innerText = 'กำลังบันทึก...';
-
-      const studentData = {
-          rowIndex: document.getElementById('student-row-index').value,
-          id: document.getElementById('student-id').value,
-          name: document.getElementById('student-name').value,
-          class: document.getElementById('student-class').value,
-          imageData: document.getElementById('student-image-data').value
-      };
-
-      if (!studentData.imageData && !studentData.rowIndex) { 
-          alert('กรุณาอัปโหลดรูปภาพสำหรับนักเรียนใหม่');
-          submitBtn.disabled = false;
-          submitBtn.innerText = 'บันทึก';
-          return;
-      }
-      const action = studentData.rowIndex ? 'updateStudent' : 'addStudent';
-      
-      try {
-          const response = await apiCall({ action, data: studentData });
-          if (response.success) { 
-              closeStudentModal();
-              loadStudentDataForTable(); 
-          } else { 
-              alert('Error: ' + (response.error || 'Unknown error'));
-          }
-      } catch (err) {
-          alert('Error: ' + err.message);
-      } finally {
-          submitBtn.disabled = false;
-          submitBtn.innerText = 'บันทึก';
-      }
-  }
-
-  async function deleteStudent(rowIndex) {
-      if (confirm('คุณแน่ใจหรือไม่ว่าต้องการลบข้อมูลนักเรียนคนนี้?')) {
-          try {
-              const response = await apiCall({ action: 'deleteStudent', data: { rowIndex } });
-              if (response.success) { 
-                  loadStudentDataForTable();
-              } else { 
-                  alert('Error: ' + (response.error || 'Unknown error'));
-              }
-          } catch (err) {
-              alert('Error: ' + err.message);
-          }
-      }
-  }
-  
-  // --- REPORTS ---
-  function loadDataForReportFilters() {
-      const classFilter = document.getElementById('report-class-filter');
-      if (classFilter.options.length > 1) return;
-      const classes = [...new Set(students.map(s => s.class))].filter(Boolean);
-      classes.sort().forEach(className => {
-          classFilter.add(new Option(className, className));
-      });
-  }
-
-  async function generateReport() {
-      const reportTableBody = document.getElementById('report-table-body');
-      const linePreview = document.getElementById('line-preview-data');
-      const sendLineBtn = document.getElementById('send-line-btn');
-
-      reportTableBody.innerHTML =
-        `<tr><td colspan="8" class="text-center p-8">
-            <div class="loader w-8 h-8 rounded-full border-4 border-gray-200 mx-auto"></div>
-          </td></tr>`;
-      linePreview.innerHTML = '<p class="text-gray-500">กำลังโหลดข้อมูล...</p>';
-      sendLineBtn.disabled = true;
-      document.getElementById('report-results-container').classList.remove('hidden');
-
-      const reportData = { 
-          classFilter: document.getElementById('report-class-filter').value, 
-          periodFilter: document.getElementById('report-period-filter').value, 
-          dateFilter: document.getElementById('report-date-filter').value 
-      };
-      try {
-          const response = await apiCall({ action: 'getAttendanceReport', data: reportData });
-          if (response.success) {
-              const { summary, lineData } = response.data;
-              lastReportDataForLine = lineData;
-
-              reportTableBody.innerHTML = '';
-              if (summary.length === 0) {
-                  reportTableBody.innerHTML =
-                    `<tr><td colspan="8" class="text-center p-8 text-gray-500">
-                        ไม่พบข้อมูลตามเงื่อนไขที่เลือก
-                      </td></tr>`;
-                  linePreview.innerHTML = '<p class="text-gray-500">ไม่พบข้อมูล</p>';
-                  return;
-              }
-
-              summary.forEach(item => {
-                  const totalSessions = item.present + item.absent + item.leave;
-                  const attendancePercent = totalSessions > 0
-                    ? ((item.present / totalSessions) * 100).toFixed(2)
-                    : '0.00';
-
-                  const row = `
-                    <tr>
-                      <td class="p-3 text-left">${item.class}</td>
-                      <td class="p-3 text-left">${item.subject}</td>
-                      <td class="p-3 text-center">${item.totalStudents}</td>
-                      <td class="p-3 text-center">${item.present}</td>
-                      <td class="p-3 text-center">${item.absent}</td>
-                      <td class="p-3 text-center">${item.leave}</td>
-                      <td class="p-3 text-center font-bold">${item.present}</td>
-                      <td class="p-3 text-center font-bold">${attendancePercent}%</td>
-                    </tr>`;
-                  reportTableBody.innerHTML += row;
-              });
-
-              linePreview.innerHTML =
-                lineData.map(d =>
-                  `<div>${d.date} | ${d.class} | ${d.subject} | ${d.id} ${d.name} | ${d.status}</div>`
-                ).join('') || '<p class="text-gray-500">ไม่มีนักเรียนที่ขาดหรือลา</p>';
-
-              document.getElementById('report-title').innerText =
-                `ผลลัพธ์สำหรับวันที่ ${new Date(reportData.dateFilter).toLocaleDateString('th-TH')}`;
-              sendLineBtn.disabled = false;
-          } else {
-              throw new Error(response.error);
-          }
-      } catch (err) {
-          reportTableBody.innerHTML =
-            `<tr><td colspan="8" class="text-center p-8 text-red-500">
-                เกิดข้อผิดพลาด: ${err}
-              </td></tr>`;
-          linePreview.innerHTML = `<p class="text-red-500">เกิดข้อผิดพลาด</p>`;
-      }
-  }
-
-  async function sendReportToLine() {
-      if (!lastReportDataForLine) {
-          alert('กรุณาสร้างรายงานก่อนส่ง');
-          return;
-      }
-      
-      const btn = document.getElementById('send-line-btn');
-      btn.disabled = true;
-      btn.querySelector('span').innerText = 'กำลังส่ง...';
-
-      try {
-          const response = await apiCall({ action: 'sendLineNotification', data: lastReportDataForLine });
-          alert(response.success ? 'ส่งเข้า LINE สำเร็จ' : 'ส่งไม่สำเร็จ');
-      } catch (err) {
-          alert(`เกิดข้อผิดพลาดรุนแรงในการส่ง LINE: ${err.message}`);
-      } finally {
-          btn.disabled = false;
-          btn.querySelector('span').innerText = 'ส่งรายงานเข้า LINE';
-      }
-  }
-
-  // --- SUMMARY REPORT & SCORING ---
-  function loadDataForSummaryFilters() {
-      const classFilter = document.getElementById('summary-class-filter');
-      if (classFilter.options.length > 1) return;
-      const classes = [...new Set(students.map(s => s.class))].filter(Boolean);
-      classes.sort().forEach(className => {
-          classFilter.add(new Option(className, className));
-      });
-  }
-
-  async function generateSummaryReport() {
-      const tableBody = document.getElementById('summary-table-body');
-      tableBody.innerHTML =
-        `<tr><td colspan="7" class="text-center p-8">
-            <div class="loader w-8 h-8 rounded-full border-4 border-gray-200 mx-auto"></div>
-            <p>กำลังประมวลผลสรุปผล...</p>
-          </td></tr>`;
-      document.getElementById('student-detail-container').classList.add('hidden');
-      document.getElementById('export-excel-btn').classList.add('hidden');
-
-      const dateValue = document.getElementById('summary-date-filter').value;
-      const filters = {
-          classFilter: document.getElementById('summary-class-filter').value,
-          period: document.getElementById('summary-period-filter').value,
-          date: `${dateValue}-01`,
-      };
-
-      try {
-          const response = await apiCall({ action: 'getAttendanceSummaryReport', data: filters });
-          if (response.success) {
-              summaryReportData = response.data;
-              tableBody.innerHTML = '';
-
-              if (summaryReportData.summary.length === 0) {
-                  tableBody.innerHTML =
-                    `<tr><td colspan="7" class="text-center p-8 text-gray-500">
-                        ไม่พบข้อมูลตามเงื่อนไขที่เลือก
-                      </td></tr>`;
-                  return;
-              }
-              
-              summaryReportData.summary.forEach(item => {
-                  const totalAttendance = item.present + item.absent + item.leave;
-                  const attendancePercent = totalAttendance > 0
-                    ? ((item.present / totalAttendance) * 100).toFixed(2)
-                    : "0.00";
-                  const row = document.createElement('tr');
-                  row.className = 'summary-row cursor-pointer';
-                  row.onclick = () => showStudentDetail(item.class, item.subject);
-                  row.innerHTML = `
-                      <td class="p-3">${item.class}</td>
-                      <td class="p-3 font-medium">${item.subject}</td>
-                      <td class="p-3 text-center">${item.totalStudents}</td>
-                      <td class="p-3 text-center text-green-600">${item.present}</td>
-                      <td class="p-3 text-center text-red-600">${item.absent}</td>
-                      <td class="p-3 text-center text-yellow-600">${item.leave}</td>
-                      <td class="p-3 text-center font-bold">${attendancePercent}%</td>`;
-                  tableBody.appendChild(row);
-              });
-              document.getElementById('export-excel-btn').classList.remove('hidden');
-          } else {
-              throw new Error(response.error);
-          }
-      } catch (err) {
-          tableBody.innerHTML =
-            `<tr><td colspan="7" class="text-center p-8 text-red-500">
-                เกิดข้อผิดพลาด: ${err.message}
-              </td></tr>`;
-      }
-  }
-
-  function showStudentDetail(className, subjectName) {
-      const detailContainer = document.getElementById('student-detail-container');
-      const detailTableBody = document.getElementById('student-detail-table-body');
-      
-      document.getElementById('student-detail-title').innerText =
-        `รายชื่อนักเรียนและคะแนน - ห้อง ${className} | วิชา: ${subjectName}`;
-      detailTableBody.innerHTML = '';
-      
-      const studentsInClass = summaryReportData.allStudents.filter(s => s.class === className);
-      const attendanceDetails = summaryReportData.details.filter(
-        d => d.class === className && d.subject === subjectName
-      );
-
-      studentsInClass.forEach(student => {
-          const studentRecords = attendanceDetails.filter(d => d.studentid == student.studentid);
-          const presentCount = studentRecords.filter(r => r.status === 'มาเรียน').length;
-          const absentCount = studentRecords.filter(r => r.status === 'ขาด').length;
-          const leaveCount = studentRecords.filter(r => r.status === 'ลา').length;
-          
-          const scoreKey = `${student.studentid}|${subjectName}`;
-          const currentScore = summaryReportData.scores[scoreKey] || '';
-
-          const row = document.createElement('tr');
-          row.innerHTML = `
-              <td class="p-2">${student.studentid}</td>
-              <td class="p-2">${student.name}</td>
-              <td class="p-2 text-center">${presentCount}</td>
-              <td class="p-2 text-center">${absentCount}</td>
-              <td class="p-2 text-center">${leaveCount}</td>
-              <td class="p-2 text-center">
-                  <input type="number" class="w-20 text-center border rounded p-1 bg-white dark:bg-gray-800"
-                         data-studentid="${student.studentid}"
-                         data-class="${className}"
-                         data-subject="${subjectName}"
-                         value="${currentScore}">
-              </td>`;
-          detailTableBody.appendChild(row);
-      });
-
-      detailContainer.classList.remove('hidden');
-      detailContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      lucide.createIcons();
-  }
-
-  async function saveScores(event) {
-      const scoreInputs = document.querySelectorAll('#student-detail-table-body input');
-      const scoresToSave = [];
-      scoreInputs.forEach(input => {
-          scoresToSave.push([
-              input.dataset.studentid,
-              input.dataset.class,
-              input.dataset.subject,
-              input.value
-          ]);
-      });
-
-      if (scoresToSave.length > 0) {
-          const saveBtn = event.target.closest('button');
-          try {
-              saveBtn.disabled = true;
-              saveBtn.querySelector('span').innerText = 'กำลังบันทึก...';
-
-              const response = await apiCall({ action: 'updateAttendanceScores', data: scoresToSave });
-              alert(response.success ? 'บันทึกคะแนนเรียบร้อย' : `เกิดข้อผิดพลาด: ${response.error}`);
-              if (response.success) {
-                  generateSummaryReport();
-              }
-          } catch (err) {
-              alert(`เกิดข้อผิดพลาดรุนแรง: ${err.message}`);
-          } finally {
-              saveBtn.disabled = false;
-              saveBtn.querySelector('span').innerText = 'บันทึกคะแนน';
-          }
-      }
-  }
-
-  function exportSummaryToExcel() {
-      if (!summaryReportData.summary || summaryReportData.summary.length === 0) {
-          alert('ไม่มีข้อมูลสำหรับส่งออก');
-          return;
-      }
-      
-      const dataToExport = summaryReportData.summary.map(item => {
-          const totalAttendance = item.present + item.absent + item.leave;
-          const attendancePercent = totalAttendance > 0
-            ? ((item.present / totalAttendance) * 100).toFixed(2)
-            : "0.00";
-          return {
-              'ชั้น': item.class,
-              'รายวิชา': item.subject,
-              'นักเรียนทั้งหมด': item.totalStudents,
-              'มา': item.present,
-              'ขาด': item.absent,
-              'ลา': item.leave,
-              '% การเข้าเรียน': attendancePercent
-          };
-      });
-
-      const worksheet = XLSX.utils.json_to_sheet(dataToExport);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "สรุปการเข้าเรียน");
-      
-      XLSX.writeFile(workbook, `สรุปการเข้าเรียน-${new Date().toISOString().split('T')[0]}.xlsx`);
-  }
-
-  // --- UTILITIES ---
-  function getLocation() {
-      if (navigator.geolocation) {
-          navigator.geolocation.getCurrentPosition(
-              pos => { currentGeoLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude }; },
-              () => { console.warn('Could not get location.'); }
-          );
-      }
-  }
-</script>
+        // --- GLOBAL STATE & CONFIG ---
+        let gasWebAppUrl = '';
+        let faceMatcher = null, pieChart;
+        let students = [], attendance = [], checkedInToday = new Map();
+        let isScanning = false, recognitionInterval = null;
+        let currentGeoLocation = null;
+        let currentSubject = '';
+        let lastReportDataForLine = [];
+        let studentSortOrder = 'asc';
+        let summaryReportData = {}; 
+
+        // --- THEME ---
+        function applyTheme(theme) {
+            const chartTextColor = theme === 'dark' ? 'rgba(229, 231, 235, 0.8)' : 'rgba(55, 65, 81, 0.9)';
+            const chartGridColor = theme === 'dark' ? 'rgba(75, 85, 99, 0.5)' : 'rgba(209, 213, 219, 0.5)';
+            if (theme === 'dark') {
+                document.documentElement.classList.add('dark');
+                document.getElementById('theme-icon-sun').classList.remove('hidden');
+                document.getElementById('theme-icon-moon').classList.add('hidden');
+            } else {
+                document.documentElement.classList.remove('dark');
+                document.getElementById('theme-icon-sun').classList.add('hidden');
+                document.getElementById('theme-icon-moon').classList.remove('hidden');
+            }
+            Chart.defaults.color = chartTextColor; Chart.defaults.borderColor = chartGridColor;
+            if (pieChart) renderDashboard();
+            lucide.createIcons();
+        }
+        function toggleTheme() {
+            const newTheme = document.documentElement.classList.contains('dark') ? 'light' : 'dark';
+            localStorage.setItem('theme', newTheme);
+            applyTheme(newTheme);
+        }
+
+        // --- INITIALIZATION ---
+        window.onload = async () => {
+            lucide.createIcons();
+            const savedTheme = localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+            applyTheme(savedTheme);
+            gasWebAppUrl = localStorage.getItem('gasWebAppUrl');
+            if (!gasWebAppUrl) {
+                gasWebAppUrl = prompt("กรุณาวาง URL ของ Google Apps Script Web App:");
+                if (gasWebAppUrl) {
+                    localStorage.setItem('gasWebAppUrl', gasWebAppUrl);
+                }
+            }
+            await initializeApp();
+            getLocation();
+            
+            const today = new Date();
+            const yyyy = today.getFullYear();
+            const mm = String(today.getMonth() + 1).padStart(2, '0');
+            
+            document.getElementById('dashboard-date').valueAsDate = today;
+            document.getElementById('report-date-filter').valueAsDate = today;
+            document.getElementById('summary-date-filter').value = `${yyyy}-${mm}`;
+
+            document.getElementById('dashboard-date').addEventListener('change', renderDashboard);
+            document.getElementById('summary-period').addEventListener('change', renderDashboard);
+            document.getElementById('image-upload-input').addEventListener('change', handleImageUpload);
+        };
+       async function initializeApp() {
+    try {
+        const MODEL_URL = "https://cdn.jsdelivr.net/gh/vladmandic/face-api/model/";
+
+        await Promise.all([
+            faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
+            faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+            faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+        ]);
+
+        console.log("FaceAPI Models Loaded Successfully");
+        console.log("ssd:", faceapi.nets.ssdMobilenetv1.isLoaded);
+        console.log("landmark:", faceapi.nets.faceLandmark68Net.isLoaded);
+        console.log("recognition:", faceapi.nets.faceRecognitionNet.isLoaded);
+
+    } catch (error) {
+        console.error("Initialization failed:", error);
+        alert("ไม่สามารถโหลดโมเดล AI ได้ กรุณารีเฟรชหน้าเว็บ");
+        return;
+    }
+
+    switchTab("dashboard");
+}
+
+
+        // --- UI & NAVIGATION ---
+        async function switchTab(tabName) {
+            stopScanning(false);
+            ['dashboard', 'attendance', 'manage', 'report', 'summary'].forEach(name => {
+                const contentEl = document.getElementById(`content-${name}`);
+                const tabEl = document.getElementById(`tab-${name}`);
+                if (contentEl) contentEl.classList.add('hidden');
+                if (tabEl) {
+                    tabEl.classList.remove('bg-blue-600', 'text-white');
+                    tabEl.classList.add('text-gray-600', 'dark:text-gray-300');
+                }
+            });
+            document.getElementById(`content-${tabName}`).classList.remove('hidden');
+            const activeTab = document.getElementById(`tab-${tabName}`);
+            activeTab.classList.add('bg-blue-600', 'text-white');
+            activeTab.classList.remove('text-gray-600', 'dark:text-gray-300');
+            
+            if (tabName === 'dashboard') {
+                await loadStudentData();
+                await loadAttendanceDataForDashboard();
+            } else if (tabName === 'manage') { 
+                await loadStudentDataForTable();
+            } else if (tabName === 'attendance') {
+                await loadStudentDataForRecognition();
+                await loadSubjects();
+            } else if (tabName === 'report') {
+                await loadStudentData();
+                loadDataForReportFilters();
+            } else if (tabName === 'summary') {
+                await loadStudentData();
+                loadDataForSummaryFilters();
+            }
+        }
+        
+        // --- DATA LOADING ---
+        async function apiCall(payload) {
+    if (!gasWebAppUrl) {
+        alert('กรุณาตั้งค่า Google Apps Script URL ก่อน โดยการรีเฟรชหน้าเว็บ');
+        return { success: false, error: 'GAS URL not configured' };
+    }
+    try {
+        const response = await fetch(gasWebAppUrl, {
+            method: 'POST',
+            mode: 'cors',
+            redirect: 'follow',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify(payload)
+        });
+
+        // ถ้า status ไม่ ok ให้ลองอ่าน text เพื่อ debug
+        const text = await response.text();
+
+        // พยายามแปลงเป็น JSON
+        try {
+            const json = JSON.parse(text);
+            return json;
+        } catch (e) {
+            // ไม่ใช่ JSON — คืนค่าเป็นข้อความ
+            return text;
+        }
+    } catch (error) {
+        console.error('API Call Error:', error);
+        alert(`เกิดข้อผิดพลาดในการเชื่อมต่อกับ Server:\n${error.message}`);
+        return { success: false, error: error.message };
+    }
+}
+
+        
+        async function loadStudentData() {
+            const rosterLoading = document.getElementById('roster-loading');
+            if (students.length > 0) return;
+            try {
+                if (rosterLoading) rosterLoading.style.display = 'block';
+                const response = await apiCall({ action: 'getStudents' });
+                if (response.success) {
+                    students = response.data;
+                } else {
+                    throw new Error(response.error || 'Failed to load students from server.');
+                }
+            } catch (error) {
+                console.error('Error loading students:', error);
+                alert('เกิดข้อผิดพลาดในการโหลดข้อมูลนักเรียน');
+                students = [];
+            } finally {
+                 if (rosterLoading && rosterLoading.style.display !== 'none') {
+                    renderStudentRosterForDashboard();
+                    rosterLoading.style.display = 'none';
+                }
+            }
+        }
+
+        // --- DASHBOARD ---
+        function renderStudentRosterForDashboard() {
+            const rosterGrid = document.getElementById('student-roster-grid');
+            if(!rosterGrid) return;
+            rosterGrid.innerHTML = '';
+            if (students.length === 0) {
+                rosterGrid.innerHTML = `<p class="col-span-full text-center text-gray-500">ยังไม่มีข้อมูลนักเรียนในระบบ</p>`;
+            } else {
+                students.forEach(student => {
+                    const card = document.createElement('div');
+                    card.className = 'bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg text-center';
+                     card.innerHTML = `<img src="${student.imagedatabase64 || 'https://placehold.co/150x150/e2e8f0/475569?text=No+Image'}" class="w-24 h-24 rounded-full object-cover mx-auto mb-2 border-2 border-gray-300 dark:border-gray-600"><p class="font-semibold text-sm truncate">${student.name}</p><p class="text-xs text-gray-500">${student.studentid}</p><p class="text-xs text-gray-500">${student.class}</p>`;
+                    rosterGrid.appendChild(card);
+                });
+            }
+        }
+        async function loadAttendanceDataForDashboard() {
+             try {
+                const response = await apiCall({ action: 'getAttendance' });
+                if (response.success) {
+                    attendance = response.data.map(rec => ({ ...rec, timestamp: new Date(rec.timestamp) }));
+                    renderDashboard();
+                }
+            } catch (error) {
+                console.error('Error loading attendance:', error);
+            }
+        }
+        async function renderDashboard() {
+            const selectedDate = document.getElementById('dashboard-date').value;
+            const period = document.getElementById('summary-period').value;
+            let filteredForOverall;
+            if (period === 'day') { filteredForOverall = attendance.filter(rec => new Date(rec.timestamp).toDateString() === new Date(selectedDate).toDateString()); } 
+            else if (period === 'week') { const startOfWeek = new Date(selectedDate); startOfWeek.setDate(new Date(selectedDate).getDate() - new Date(selectedDate).getDay()); startOfWeek.setHours(0,0,0,0); const endOfWeek = new Date(startOfWeek); endOfWeek.setDate(startOfWeek.getDate() + 6); endOfWeek.setHours(23, 59, 59, 999);
+                filteredForOverall = attendance.filter(rec => rec.timestamp >= startOfWeek && rec.timestamp <= endOfWeek);
+            }
+            else { filteredForOverall = attendance.filter(rec => rec.timestamp.getFullYear() === new Date(selectedDate).getFullYear() && rec.timestamp.getMonth() === new Date(selectedDate).getMonth()); }
+            
+            let presentCount = 0, absentOrLeaveCount = 0;
+            const uniqueDailyChecks = new Set();
+            filteredForOverall.forEach(rec => {
+                const key = `${rec.timestamp.toDateString()}-${rec.studentid}-${rec.subject}`;
+                if (uniqueDailyChecks.has(key)) return;
+                if (rec.status === 'มาเรียน') {
+                    presentCount++;
+                } else {
+                    absentOrLeaveCount++;
+                }
+                uniqueDailyChecks.add(key);
+            });
+            document.getElementById('stat-present').innerText = presentCount;
+            document.getElementById('stat-absent').innerText = absentOrLeaveCount;
+            renderPieChart(presentCount, absentOrLeaveCount);
+            
+            try {
+                const response = await apiCall({ action: 'getDashboardSummary', data: { date: selectedDate, period: period } });
+                const tableBody = document.getElementById('subject-summary-table-body');
+                tableBody.innerHTML = '';
+                if (response.success && response.data.length > 0) {
+                     response.data.forEach(item => {
+                        const row = `
+                            <tr class="dark:border-gray-700">
+                                <td class="p-2 font-medium">${item.subject}</td>
+                                <td class="p-2 text-center">${item.present}</td>
+                                <td class="p-2 text-center">${item.absentOrLeave}</td>
+                            </tr>`;
+                        tableBody.innerHTML += row;
+                     });
+                } else {
+                     tableBody.innerHTML = '<tr><td colspan="3" class="text-center p-4 text-gray-500">ไม่มีข้อมูลการเช็คชื่อในวันนี้</td></tr>';
+                }
+            } catch(error) {
+                console.error("Error fetching dashboard summary:", error);
+                document.getElementById('subject-summary-table-body').innerHTML = '<tr><td colspan="3" class="text-center p-4 text-red-500">โหลดข้อมูลล้มเหลว</td></tr>';
+            }
+        }
+        function renderPieChart(present, absent) {
+            const pieCanvas = document.getElementById('attendance-pie-chart');
+            if (!pieCanvas) return;
+            const ctx = pieCanvas.getContext('2d');
+            if(pieChart) pieChart.destroy();
+            const total = present + absent;
+            if (total === 0) {
+                pieChart = new Chart(ctx, { type: 'pie', data: { labels: ['ไม่มีข้อมูล'], datasets: [{ data: [1], backgroundColor: ['#d1d5db'] }] }, options: { plugins: { legend: { display: false }, tooltip: { enabled: false } } }});
+                return; 
+            }
+            pieChart = new Chart(ctx, { type: 'pie', data: { labels: ['มาเรียน', 'ขาด/ลา'], datasets: [{ data: [present, absent], backgroundColor: ['#34D399', '#F87171'] }] }, options: { responsive: true, maintainAspectRatio: false } });
+        }
+        
+        // --- ATTENDANCE PROCESS ---
+        async function loadSubjects() {
+            try {
+                const response = await apiCall({ action: 'getSubjects' });
+                const subjectSelect = document.getElementById('subject-select');
+                subjectSelect.innerHTML = '<option value="">-- กรุณาเลือกรายวิชา --</option>';
+                if (response.success && response.data.length > 0) {
+                    response.data.forEach(subject => {
+                        const option = new Option(subject, subject);
+                        subjectSelect.appendChild(option);
+                    });
+                }
+                subjectSelect.onchange = () => {
+                    const hasValue = !!subjectSelect.value;
+                    document.getElementById('start-scan-btn').disabled = !hasValue;
+                    document.getElementById('manual-check-btn').disabled = !hasValue;
+                };
+            } catch (error) {
+                console.error('Error loading subjects:', error);
+            }
+        }
+        function startScanning() {
+            const selectedSubject = document.getElementById('subject-select').value;
+            if (!selectedSubject) { alert('กรุณาเลือกรายวิชาก่อน'); return; }
+            currentSubject = selectedSubject; 
+            document.getElementById('current-subject-display').innerText = `| วิชา: ${currentSubject}`;
+            checkedInToday.clear();
+            document.getElementById('start-scan-section').classList.add('hidden');
+            document.getElementById('scanning-section').classList.remove('hidden');
+            document.getElementById('absence-management-section').classList.add('hidden');
+            isScanning = true;
+            startVideo();
+        }
+        async function startManualCheck() {
+            const selectedSubject = document.getElementById('subject-select').value;
+            if (!selectedSubject) { alert('กรุณาเลือกรายวิชาก่อน'); return; }
+            
+            currentSubject = selectedSubject;
+            document.getElementById('current-subject-display').innerText = `| วิชา: ${currentSubject}`;
+            checkedInToday.clear();
+            
+            try {
+                const response = await apiCall({ 
+                    action: 'getTodaysAttendanceBySubject', 
+                    data: { subject: currentSubject, date: new Date().toISOString().split('T')[0] } 
+                });
+                if (response.success && response.data) {
+                    response.data.forEach(rec => {
+                        checkedInToday.set(String(rec.studentid), rec);
+                    });
+                }
+            } catch (error) {
+                alert('ไม่สามารถดึงข้อมูลการเช็คชื่อเดิมได้');
+                console.error('Error fetching today\'s attendance:', error);
+            }
+
+            document.getElementById('start-scan-section').classList.add('hidden');
+            document.getElementById('scanning-section').classList.add('hidden');
+            populateAttendanceList();
+            document.getElementById('absence-management-section').classList.remove('hidden');
+        }
+        function populateAttendanceList() {
+            const studentList = document.getElementById('absent-list');
+            studentList.innerHTML = '';
+            
+            if (students.length > 0) {
+                students.forEach(student => {
+                    const item = document.createElement('div');
+                    item.className = 'flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg';
+                    item.id = `student-row-${student.studentid}`;
+                    
+                    const studentInfoHtml = `
+                        <div class="flex items-center gap-3">
+                            <img src="${student.imagedatabase64 || 'https://placehold.co/40x40'}" class="w-10 h-10 rounded-full object-cover">
+                            <div>
+                                <p class="font-medium">${student.name}</p>
+                                <p class="text-sm text-gray-500">${student.studentid}</p>
+                            </div>
+                        </div>`;
+
+                    item.innerHTML = studentInfoHtml + `<div class="flex items-center gap-2" id="status-container-${student.studentid}"></div>`;
+                    studentList.appendChild(item);
+                    
+                    renderStudentStatusControls(student.studentid);
+                });
+            }
+        }
+        function renderStudentStatusControls(studentId) {
+            const statusContainer = document.getElementById(`status-container-${studentId}`);
+            if (!statusContainer) return;
+
+            const existingRecord = checkedInToday.get(String(studentId));
+
+            if (existingRecord) {
+                let statusColor = 'text-gray-500';
+                if (existingRecord.status === 'มาเรียน') statusColor = 'text-green-600 dark:text-green-400';
+                else if (existingRecord.status === 'ขาด') statusColor = 'text-red-600 dark:text-red-400';
+                else if (existingRecord.status === 'ลา') statusColor = 'text-yellow-600 dark:text-yellow-400';
+
+                statusContainer.innerHTML = `
+                    <p class="font-semibold text-sm ${statusColor}">${existingRecord.status}</p>
+                    <button onclick="editStatus('${studentId}')" class="text-blue-600 hover:text-blue-800 text-sm p-1">
+                        <i data-lucide="edit-2" class="w-4 h-4"></i>
+                    </button>`;
+            } else {
+                const buttonBaseClasses = "px-3 py-1 text-sm rounded-full transition-colors duration-200";
+                const defaultButtonClasses = "bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600";
+                statusContainer.innerHTML = `
+                    <div class="flex gap-2 items-center" id="status-buttons-${studentId}">
+                        <button onclick="markStatus('${studentId}', 'มาเรียน')" class="${buttonBaseClasses} ${defaultButtonClasses}">มาเรียน</button>
+                        <button onclick="markStatus('${studentId}', 'ขาด')" class="${buttonBaseClasses} ${defaultButtonClasses}">ขาด</button>
+                        <button onclick="markStatus('${studentId}', 'ลา')" class="${buttonBaseClasses} ${defaultButtonClasses}">ลา</button>
+                    </div>`;
+            }
+            lucide.createIcons();
+        }
+        function editStatus(studentId) {
+            const statusContainer = document.getElementById(`status-container-${studentId}`);
+            if (!statusContainer) return;
+
+            const buttonBaseClasses = "px-3 py-1 text-sm rounded-full transition-colors duration-200";
+            const defaultButtonClasses = "bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600";
+            statusContainer.innerHTML = `
+                <div class="flex gap-2 items-center" id="status-buttons-${studentId}">
+                    <button onclick="markStatus('${studentId}', 'มาเรียน')" class="${buttonBaseClasses} ${defaultButtonClasses}">มาเรียน</button>
+                    <button onclick="markStatus('${studentId}', 'ขาด')" class="${buttonBaseClasses} ${defaultButtonClasses}">ขาด</button>
+                    <button onclick="markStatus('${studentId}', 'ลา')" class="${buttonBaseClasses} ${defaultButtonClasses}">ลา</button>
+                </div>`;
+            
+            const existingRecord = checkedInToday.get(String(studentId));
+            if (existingRecord) {
+                markStatus(studentId, existingRecord.status, false); 
+            }
+        }
+        function stopScanning(showStudentList = true) {
+            isScanning = false;
+            if (recognitionInterval) clearInterval(recognitionInterval);
+            recognitionInterval = null;
+
+            const video = document.getElementById('video');
+            if (video.srcObject) { 
+                video.srcObject.getTracks().forEach(track => track.stop());
+                video.srcObject = null;
+            }
+
+            document.getElementById('video-loader').style.display = 'flex';
+            document.getElementById('video-wrapper').classList.add('hidden');
+            document.getElementById('scanning-section').classList.add('hidden');
+            if (!showStudentList) {
+                document.getElementById('start-scan-section').classList.remove('hidden');
+                return;
+            }
+            
+            if (students.length > 0) {
+                document.getElementById('absence-management-section').classList.remove('hidden');
+                populateAttendanceList();
+            } else {
+                document.getElementById('start-scan-section').classList.remove('hidden');
+            }
+        }
+        function markStatus(studentId, status, rerender = true) {
+            const student = students.find(s => s.studentid == studentId);
+            if (!student) return;
+
+            const record = { 
+                id: student.studentid, name: student.name, class: student.class, 
+                timestamp: new Date().toISOString(), 
+                location: currentGeoLocation ? `${currentGeoLocation.lat},${currentGeoLocation.lng}` : 'N/A', 
+                status: status,
+                subject: currentSubject
+            };
+            checkedInToday.set(String(student.studentid), record);
+            
+            if (rerender) {
+                renderStudentStatusControls(student.studentid);
+            } else {
+                const buttonContainer = document.getElementById(`status-buttons-${studentId}`);
+                if (!buttonContainer) return;
+                const allButtons = buttonContainer.querySelectorAll('button');
+                const defaultClasses = ['bg-gray-200', 'dark:bg-gray-700', 'text-gray-600', 'dark:text-gray-300', 'hover:bg-gray-300', 'dark:hover:bg-gray-600'];
+                const selectedClasses = ['bg-blue-600', 'text-white', 'dark:bg-blue-600', 'dark:text-white'];
+                allButtons.forEach(btn => { btn.classList.remove(...selectedClasses); btn.classList.add(...defaultClasses); });
+                let selectedButton;
+                if (status === 'มาเรียน') selectedButton = allButtons[0];
+                else if (status === 'ขาด') selectedButton = allButtons[1];
+                else if (status === 'ลา') selectedButton = allButtons[2];
+                if (selectedButton) { selectedButton.classList.remove(...defaultClasses); selectedButton.classList.add(...selectedClasses); }
+            }
+        }
+        async function finishAttendance() {
+            students.forEach(student => {
+                if (!checkedInToday.has(String(student.studentid))) {
+                    const absentRecord = {
+                        id: student.studentid, name: student.name, class: student.class,
+                        timestamp: new Date().toISOString(),
+                        location: currentGeoLocation ? `${currentGeoLocation.lat},${currentGeoLocation.lng}` : 'N/A',
+                        status: 'ขาด', subject: currentSubject
+                    };
+                    checkedInToday.set(String(student.studentid), absentRecord);
+                }
+            });
+
+            const recordsToSave = Array.from(checkedInToday.values());
+
+            if (recordsToSave.length > 0) {
+                 try {
+                    const response = await apiCall({ 
+                        action: 'recordAttendanceBulk', 
+                        data: {
+                            records: recordsToSave,
+                            subject: currentSubject,
+                            date: new Date().toISOString().split('T')[0]
+                        } 
+                    });
+                    alert(response.success ? 'บันทึกข้อมูลการเช็คชื่อทั้งหมดเรียบร้อยแล้ว' : 'เกิดข้อผิดพลาดในการบันทึกข้อมูล: ' + response.error);
+                 } catch(err) {
+                    alert('เกิดข้อผิดพลาดรุนแรงในการบันทึกข้อมูล');
+                 }
+            }
+
+            checkedInToday.clear();
+            document.getElementById('absence-management-section').classList.add('hidden');
+            document.getElementById('start-scan-section').classList.remove('hidden');
+            document.getElementById('start-scan-btn').disabled = true;
+            document.getElementById('manual-check-btn').disabled = true;
+            document.getElementById('subject-select').value = '';
+            currentSubject = '';
+            document.getElementById('current-subject-display').innerText = '';
+            switchTab('dashboard');
+        }
+        async function startVideo() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                const video = document.getElementById('video');
+                video.srcObject = stream;
+                video.onplay = () => {
+                    document.getElementById('video-loader').style.display = 'none';
+                    document.getElementById('video-wrapper').classList.remove('hidden');
+                    const overlay = document.getElementById('overlay');
+                    const displaySize = { width: video.clientWidth, height: video.clientHeight };
+                    faceapi.matchDimensions(overlay, displaySize);
+                    recognitionInterval = setInterval(async () => {
+                        if (!isScanning) return;
+                        const detections = await faceapi.detectAllFaces(video, new faceapi.SsdMobilenetv1Options()).withFaceLandmarks() .withFaceDescriptors();
+                        const resizedDetections = faceapi.resizeResults(detections, displaySize);
+                        overlay.getContext('2d').clearRect(0, 0, overlay.width, overlay.height);
+                        if (faceMatcher) {
+                            resizedDetections.forEach(d => {
+                                const bestMatch = faceMatcher.findBestMatch(d.descriptor);
+                                new faceapi.draw.DrawBox(d.detection.box, { label: bestMatch.toString() }).draw(overlay);
+                                if (bestMatch.label !== 'unknown') {
+                                    const student = students.find(s => s.name === bestMatch.label);
+                                    if (student && !checkedInToday.has(String(student.studentid))) handleRecognition(student);
+                                }
+                            });
+                        }
+                    }, 300);
+                };
+            } catch (err) {
+                document.getElementById('video-loading-text').innerText = 'ไม่สามารถเปิดกล้องได้!';
+                alert(`ไม่สามารถเปิดกล้องได้: ${err.name}`);
+                stopScanning(false);
+            }
+        }
+        async function loadStudentDataForRecognition() {
+            try {
+                await loadStudentData();
+                if (students.length > 0) {
+                    const labeledFaceDescriptors = await Promise.all(students.map(async (student) => {
+                        if (student.imagedatabase64 && student.imagedatabase64.startsWith('data:image')) {
+                            try {
+                                const img = await faceapi.bufferToImage(await fetch(student.imagedatabase64).then(r => r.blob()));
+                                const detections = await faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor();
+                                if (detections) return new faceapi.LabeledFaceDescriptors(student.name, [detections.descriptor]);
+                            } catch (e) { console.error(`Could not process image for ${student.name}`, e); }
+                        }
+                        return null;
+                    }));
+                    const validDescriptors = labeledFaceDescriptors.filter(Boolean);
+                    faceMatcher = validDescriptors.length > 0 ? new faceapi.FaceMatcher(validDescriptors, 0.6) : null;
+                } else {
+                    faceMatcher = null;
+                }
+            } catch (err) {
+                console.error('Error loading students for recognition:', err);
+            }
+        }
+        function handleRecognition(student) {
+            const record = { id: student.studentid, name: student.name, class: student.class, timestamp: new Date().toISOString(), location: currentGeoLocation ? `${currentGeoLocation.lat},${currentGeoLocation.lng}` : 'N/A', status: 'มาเรียน', subject: currentSubject };
+            checkedInToday.set(String(student.studentid), record);
+            
+            const successOverlay = document.getElementById('scan-success-overlay');
+            document.getElementById('scan-success-name').innerText = student.name;
+            successOverlay.classList.remove('hidden');
+            setTimeout(() => successOverlay.classList.add('hidden'), 2000);
+            
+            if (!document.getElementById('absence-management-section').classList.contains('hidden')) {
+                renderStudentStatusControls(student.studentid);
+            }
+        }
+        
+        // --- STUDENT MANAGEMENT ---
+        function handleImageUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = e => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas'), MAX_WIDTH = 500;
+                    const scaleSize = MAX_WIDTH / img.width;
+                    canvas.width = MAX_WIDTH; canvas.height = img.height * scaleSize;
+                    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+                    const dataUrl = canvas.toDataURL('image/jpeg');
+                    document.getElementById('image-preview').src = dataUrl;
+                    document.getElementById('student-image-data').value = dataUrl;
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+        function openStudentModal(student = null) {
+            document.getElementById('student-form').reset();
+            document.getElementById('image-preview').src = 'https://placehold.co/400x300/e2e8f0/475569?text=Image';
+            document.getElementById('student-image-data').value = '';
+
+            if (student) {
+                document.getElementById('modal-title').innerText = 'แก้ไขข้อมูลนักเรียน';
+                document.getElementById('student-row-index').value = student.rowIndex;
+                document.getElementById('student-id').value = student.studentid;
+                document.getElementById('student-name').value = student.name;
+                document.getElementById('student-class').value = student.class;
+                document.getElementById('student-image-data').value = student.imagedatabase64 || '';
+                if (student.imagedatabase64) document.getElementById('image-preview').src = student.imagedatabase64;
+            } else {
+                document.getElementById('modal-title').innerText = 'เพิ่มข้อมูลนักเรียน';
+            }
+            document.getElementById('student-modal').classList.remove('hidden');
+        }
+        function closeStudentModal() { 
+            document.getElementById('student-modal').classList.add('hidden');
+        }
+        async function loadStudentDataForTable() {
+            try {
+                await loadStudentData();
+                studentSortOrder = 'desc';
+                sortStudentTable();
+            } catch(err) {
+                 console.error('Error loading students for table:', err);
+                 students = [];
+                 renderStudentTable();
+            }
+        }
+        function renderStudentTable() {
+            const tableBody = document.getElementById('student-table-body');
+            tableBody.innerHTML = '';
+            if (students.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="4" class="text-center p-4 text-gray-500">ยังไม่มีข้อมูลนักเรียน</td></tr>';
+                return;
+            }
+            
+            students.forEach(student => {
+                const row = document.createElement('tr');
+                row.innerHTML = `<td class="p-3">${student.studentid}</td><td class="p-3">${student.name}</td><td class="p-3">${student.class}</td><td class="p-3 text-center"></td>`;
+                
+                const actionsCell = row.cells[3];
+                const editButton = document.createElement('button');
+                editButton.className = 'text-blue-600 p-1';
+                editButton.textContent = 'แก้ไข';
+                editButton.onclick = () => openStudentModal(students.find(s => s.rowIndex === student.rowIndex));
+                
+                const deleteButton = document.createElement('button');
+                deleteButton.className = 'text-red-600 p-1 ml-2';
+                deleteButton.textContent = 'ลบ';
+                deleteButton.onclick = () => deleteStudent(student.rowIndex);
+
+                actionsCell.appendChild(editButton);
+                actionsCell.appendChild(deleteButton);
+                tableBody.appendChild(row);
+            });
+        }
+        function sortStudentTable() {
+    studentSortOrder = studentSortOrder === 'asc' ? 'desc' : 'asc';
+
+    students.sort((a, b) => {
+        const idA = parseInt(a.studentid) || 0;
+        const idB = parseInt(b.studentid) || 0;
+
+        return studentSortOrder === 'asc' ? idA - idB : idB - idA;
+    });
+
+    renderStudentTable();
+}
+        async function handleStudentFormSubmit(event) {
+            event.preventDefault();
+            const submitBtn = document.getElementById('form-submit-btn');
+            submitBtn.disabled = true; submitBtn.innerText = 'กำลังบันทึก...';
+            const studentData = { rowIndex: document.getElementById('student-row-index').value, id: document.getElementById('student-id').value, name: document.getElementById('student-name').value, class: document.getElementById('student-class').value, imageData: document.getElementById('student-image-data').value };
+            if (!studentData.imageData && !studentData.rowIndex) { 
+                alert('กรุณาอัปโหลดรูปภาพสำหรับนักเรียนใหม่');
+                submitBtn.disabled = false; submitBtn.innerText = 'บันทึก'; return;
+            }
+            const action = studentData.rowIndex ? 'updateStudent' : 'addStudent';
+            
+            try {
+                const response = await apiCall({ action: action, data: studentData });
+                if (response.success) { 
+                    closeStudentModal();
+                    loadStudentDataForTable(); 
+                } else { 
+                    alert('Error: ' + (response.error || 'Unknown error'));
+                }
+            } catch (err) {
+                 alert('Error: ' + err.message);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.innerText = 'บันทึก';
+            }
+        }
+        async function deleteStudent(rowIndex) {
+            if (confirm('คุณแน่ใจหรือไม่ว่าต้องการลบข้อมูลนักเรียนคนนี้?')) {
+                try {
+                     const response = await apiCall({ action: 'deleteStudent', data: { rowIndex } });
+                    if (response.success) { 
+                        loadStudentDataForTable();
+                    } else { 
+                        alert('Error: ' + (response.error || 'Unknown error'));
+                    }
+                } catch(err) {
+                    alert('Error: ' + err.message);
+                }
+            }
+        }
+        
+        // --- REPORTS ---
+        function loadDataForReportFilters() {
+            const classFilter = document.getElementById('report-class-filter');
+            if (classFilter.options.length > 1) return;
+            const classes = [...new Set(students.map(s => s.class))].filter(Boolean);
+            classes.sort().forEach(className => {
+                classFilter.add(new Option(className, className));
+            });
+        }
+        async function generateReport() {
+            const reportTableBody = document.getElementById('report-table-body');
+            const linePreview = document.getElementById('line-preview-data');
+            const sendLineBtn = document.getElementById('send-line-btn');
+
+            reportTableBody.innerHTML = `<tr><td colspan="8" class="text-center p-8"><div class="loader w-8 h-8 rounded-full border-4 border-gray-200 mx-auto"></div></td></tr>`;
+            linePreview.innerHTML = '<p class="text-gray-500">กำลังโหลดข้อมูล...</p>';
+            sendLineBtn.disabled = true;
+            document.getElementById('report-results-container').classList.remove('hidden');
+
+            const reportData = { 
+                classFilter: document.getElementById('report-class-filter').value, 
+                periodFilter: document.getElementById('report-period-filter').value, 
+                dateFilter: document.getElementById('report-date-filter').value 
+            };
+            try {
+                const response = await apiCall({ action: 'getAttendanceReport', data: reportData });
+                if (response.success) {
+                    const { summary, lineData } = response.data;
+                    lastReportDataForLine = lineData;
+
+                    reportTableBody.innerHTML = '';
+                    if (summary.length === 0) {
+                        reportTableBody.innerHTML = `<tr><td colspan="8" class="text-center p-8 text-gray-500">ไม่พบข้อมูลตามเงื่อนไขที่เลือก</td></tr>`;
+                        linePreview.innerHTML = '<p class="text-gray-500">ไม่พบข้อมูล</p>';
+                        return;
+                    }
+
+                    if (response.success) {
+    const { summary, lineData } = response.data || {};
+    // ป้องกันกรณี server ไม่ส่ง lineData มา
+    lastReportDataForLine = Array.isArray(lineData) ? lineData : [];
+    return data;
+    // ถ้าอยากให้ปุ่มเปิดได้เฉพาะเมื่อมีข้อมูลที่ส่งได้:
+    document.getElementById('send-line-btn').disabled = lastReportDataForLine.length === 0;
+}
+
+                    summary.forEach(item => {
+                        const row = `<tr>
+                                <td class="p-3 text-left">${item.class}</td>
+                                <td class="p-3 text-left">${item.subject}</td>
+                                <td class="p-3 text-center">${item.totalStudents}</td>
+                                <td class="p-3 text-center">${item.present}</td>
+                                <td class="p-3 text-center">${item.absent}</td>
+                                <td class="p-3 text-center">${item.leave}</td>
+                                <td class="p-3 text-center font-bold">${item.totalPresent}</td>
+                                <td class="p-3 text-center font-bold">${item.attendancePercent}%</td>
+                            </tr>`;
+                        reportTableBody.innerHTML += row;
+                    });
+                    linePreview.innerHTML = lineData.map(d => `<div>${d.date} | ${d.class} | ${d.subject} | ${d.id} ${d.name} | ${d.status}</div>`).join('') || '<p class="text-gray-500">ไม่มีนักเรียนที่ขาดหรือลา</p>';
+                    document.getElementById('report-title').innerText = `ผลลัพธ์สำหรับวันที่ ${new Date(reportData.dateFilter).toLocaleDateString('th-TH')}`;
+                    sendLineBtn.disabled = false;
+                } else {
+                    throw new Error(response.error);
+                }
+            } catch(err) {
+                reportTableBody.innerHTML = `<tr><td colspan="8" class="text-center p-8 text-red-500">เกิดข้อผิดพลาด: ${err}</td></tr>`;
+                linePreview.innerHTML = `<p class="text-red-500">เกิดข้อผิดพลาด</p>`;
+            }
+        }
+        async function sendReportToLine() {
+    // ป้องกันกรณี undefined / null / empty
+    if (!lastReportDataForLine || !Array.isArray(lastReportDataForLine) || lastReportDataForLine.length === 0) {
+        alert('กรุณาสร้างรายงานก่อนส่ง (ไม่มีข้อมูลสำหรับส่ง)');
+        return;
+    }
+
+    const btn = document.getElementById('send-line-btn');
+    if (btn) {
+        btn.disabled = true;
+        // ถ้ามี span
+        const span = btn.querySelector('span');
+        if (span) span.innerText = 'กำลังส่ง...';
+    }
+
+    try {
+        const response = await apiCall({ action: 'sendLineNotification', data: lastReportDataForLine });
+
+        // log เพื่อวิเคราะห์ ข้อผิดพลาด
+        console.log('sendLineNotification response:', response);
+
+        // รองรับหลายรูปแบบ response (object / text / boolean)
+        if (!response) {
+            alert('ไม่มีการตอบกลับจากเซิร์ฟเวอร์ (response is null)');
+        } else if (typeof response === 'string') {
+            alert(response);
+        } else if (typeof response === 'object') {
+            // หาก server ส่ง { success: true/false, message, error }
+            if ('success' in response) {
+                alert(response.success ? (response.message || 'ส่งรายงานสำเร็จ') : (response.error || 'ส่งรายงานล้มเหลว'));
+            } else if ('message' in response) {
+                alert(response.message || 'ได้รับการตอบกลับจากเซิร์ฟเวอร์');
+            } else {
+                // ถ้าโครงสร้างอื่น ๆ แสดงเป็น JSON ง่าย ๆ
+                alert('ตอบกลับ: ' + JSON.stringify(response));
+            }
+        } else {
+            alert('ตอบกลับจากเซิร์ฟเวอร์ (ไม่รู้จักรูปแบบ): ' + String(response));
+        }
+    } catch (err) {
+        console.error('Error sending to LINE:', err);
+        alert(`เกิดข้อผิดพลาดร้ายแรงในการส่ง LINE: ${err && err.message ? err.message : err}`);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            const span = btn.querySelector('span');
+            if (span) span.innerText = 'ส่งรายงานเข้า LINE';
+        }
+    }
+}
+
+
+
+        // --- SUMMARY REPORT & SCORING ---
+        function loadDataForSummaryFilters() {
+            const classFilter = document.getElementById('summary-class-filter');
+            if (classFilter.options.length > 1) return;
+            const classes = [...new Set(students.map(s => s.class))].filter(Boolean);
+            classes.sort().forEach(className => {
+                classFilter.add(new Option(className, className));
+            });
+        }
+        async function generateSummaryReport() {
+            const tableBody = document.getElementById('summary-table-body');
+            tableBody.innerHTML = `<tr><td colspan="7" class="text-center p-8"><div class="loader w-8 h-8 rounded-full border-4 border-gray-200 mx-auto"></div><p>กำลังประมวลผลสรุปผล...</p></td></tr>`;
+            document.getElementById('student-detail-container').classList.add('hidden');
+            document.getElementById('export-excel-btn').classList.add('hidden');
+
+            const dateValue = document.getElementById('summary-date-filter').value;
+            const filters = {
+                classFilter: document.getElementById('summary-class-filter').value,
+                period: document.getElementById('summary-period-filter').value,
+                date: `${dateValue}-01`,
+            };
+
+            try {
+                const response = await apiCall({ action: 'getAttendanceSummaryReport', data: filters });
+                if (response.success) {
+    const { summary, lineData } = response.data || {};
+
+    // ป้องกัน lineData ไม่มีใน response
+    lastReportDataForLine = Array.isArray(lineData) ? lineData : [];
+
+    reportTableBody.innerHTML = '';
+    if (!summary || summary.length === 0) {
+        reportTableBody.innerHTML = `
+            <tr><td colspan="8" class="text-center p-8 text-gray-500">
+                ไม่พบข้อมูลตามเงื่อนไขที่เลือก
+            </td></tr>`;
+        linePreview.innerHTML = '<p class="text-gray-500">ไม่พบข้อมูล</p>';
+        return;
+    }
+
+    summary.forEach(item => {
+        const row = `
+            <tr>
+                <td class="p-3 text-left">${item.class}</td>
+                <td class="p-3 text-left">${item.subject}</td>
+                <td class="p-3 text-center">${item.totalStudents}</td>
+                <td class="p-3 text-center">${item.present}</td>
+                <td class="p-3 text-center">${item.absent}</td>
+                <td class="p-3 text-center">${item.leave}</td>
+                <td class="p-3 text-center font-bold">${item.totalPresent}</td>
+                <td class="p-3 text-center font-bold">${item.attendancePercent}%</td>
+            </tr>`;
+        reportTableBody.innerHTML += row;
+    });
+
+    linePreview.innerHTML =
+        lastReportDataForLine.length > 0
+            ? lastReportDataForLine
+                .map(d => `<div>${d.date} | ${d.class} | ${d.subject} | ${d.id} ${d.name} | ${d.status}</div>`)
+                .join('')
+            : '<p class="text-gray-500">ไม่มีนักเรียนที่ขาดหรือลา</p>';
+
+    document.getElementById('report-title').innerText =
+        `ผลลัพธ์สำหรับวันที่ ${new Date(reportData.dateFilter).toLocaleDateString('th-TH')}`;
+
+    sendLineBtn.disabled = lastReportDataForLine.length === 0;
+}
+else {
+                    throw new Error(response.error);
+                }
+            } catch (err) {
+                tableBody.innerHTML = `<tr><td colspan="7" class="text-center p-8 text-red-500">เกิดข้อผิดพลาด: ${err.message}</td></tr>`;
+            }
+        }
+        function showStudentDetail(className, subjectName) {
+            const detailContainer = document.getElementById('student-detail-container');
+            const detailTableBody = document.getElementById('student-detail-table-body');
+            
+            document.getElementById('student-detail-title').innerText = `รายชื่อนักเรียนและคะแนน - ห้อง ${className} | วิชา: ${subjectName}`;
+            detailTableBody.innerHTML = '';
+            
+            const studentsInClass = summaryReportData.allStudents.filter(s => s.class === className);
+            const attendanceDetails = summaryReportData.details.filter(d => d.class === className && d.subject === subjectName);
+
+            studentsInClass.forEach(student => {
+                const studentRecords = attendanceDetails.filter(d => d.studentid == student.studentid);
+                const presentCount = studentRecords.filter(r => r.status === 'มาเรียน').length;
+                const absentCount = studentRecords.filter(r => r.status === 'ขาด').length;
+                const leaveCount = studentRecords.filter(r => r.status === 'ลา').length;
+                
+                const scoreKey = `${student.studentid}|${subjectName}`;
+                const currentScore = summaryReportData.scores[scoreKey] || '';
+
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="p-2">${student.studentid}</td>
+                    <td class="p-2">${student.name}</td>
+                    <td class="p-2 text-center">${presentCount}</td>
+                    <td class="p-2 text-center">${absentCount}</td>
+                    <td class="p-2 text-center">${leaveCount}</td>
+                    <td class="p-2 text-center">
+                        <input type="number" class="w-20 text-center border rounded p-1 bg-white dark:bg-gray-800"
+                               data-studentid="${student.studentid}"
+                               data-class="${className}"
+                               data-subject="${subjectName}"
+                               value="${currentScore}">
+                    </td>`;
+                detailTableBody.appendChild(row);
+            });
+
+            detailContainer.classList.remove('hidden');
+            detailContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            lucide.createIcons();
+        }
+        async function saveScores(event) {
+            const scoreInputs = document.querySelectorAll('#student-detail-table-body input');
+            const scoresToSave = [];
+            scoreInputs.forEach(input => {
+                scoresToSave.push([
+                    input.dataset.studentid,
+                    input.dataset.class,
+                    input.dataset.subject,
+                    input.value
+                ]);
+            });
+
+            if (scoresToSave.length > 0) {
+                try {
+                    const saveBtn = event.target.closest('button');
+                    saveBtn.disabled = true;
+                    saveBtn.querySelector('span').innerText = 'กำลังบันทึก...';
+
+                    const response = await apiCall({ action: 'updateAttendanceScores', data: scoresToSave });
+                    alert(response.success ? 'บันทึกคะแนนเรียบร้อย' : `เกิดข้อผิดพลาด: ${response.error}`);
+                    if (response.success) {
+                        generateSummaryReport();
+                    }
+                } catch(err) {
+                    alert(`เกิดข้อผิดพลาดรุนแรง: ${err.message}`);
+                } finally {
+                    const saveBtn = event.target.closest('button');
+                    saveBtn.disabled = false;
+                    saveBtn.querySelector('span').innerText = 'บันทึกคะแนน';
+                }
+            }
+        }
+        function exportSummaryToExcel() {
+            if (!summaryReportData.summary || summaryReportData.summary.length === 0) {
+                alert('ไม่มีข้อมูลสำหรับส่งออก');
+                return;
+            }
+            
+            const dataToExport = summaryReportData.summary.map(item => {
+                const totalAttendance = item.present + item.absent + item.leave;
+                const attendancePercent = totalAttendance > 0 ? ((item.present / totalAttendance) * 100).toFixed(2) : "0.00";
+                return {
+                    'ชั้น': item.class,
+                    'รายวิชา': item.subject,
+                    'นักเรียนทั้งหมด': item.totalStudents,
+                    'มา': item.present,
+                    'ขาด': item.absent,
+                    'ลา': item.leave,
+                    '% การเข้าเรียน': attendancePercent
+                };
+            });
+
+            const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "สรุปการเข้าเรียน");
+            
+            XLSX.writeFile(workbook, `สรุปการเข้าเรียน-${new Date().toISOString().split('T')[0]}.xlsx`);
+        }
+
+        // --- UTILITIES ---
+        function getLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    pos => { currentGeoLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude }; },
+                    () => { console.warn('Could not get location.'); }
+                );
+            }
+        }
+    </script>
 </body>
 </html>
