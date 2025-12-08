@@ -314,7 +314,23 @@
 
     <script>
   // --- GLOBAL STATE & CONFIG ---
-  let gasWebAppUrl = '';
+  let gasWebAppUrl = "";
+
+window.onload = async () => {
+    lucide.createIcons();
+
+    // โหลดธีม
+    const savedTheme = localStorage.getItem("theme") || "light";
+    applyTheme(savedTheme);
+
+    // โหลด URL GAS
+    gasWebAppUrl = await getGASUrl();
+    if (!gasWebAppUrl) return;
+
+    await initializeApp();
+    getLocation();
+};
+
   let faceMatcher = null, pieChart;
   let students = [], attendance = [], checkedInToday = new Map();
   let isScanning = false, recognitionInterval = null;
@@ -353,18 +369,20 @@ async function getGASUrl() {
 
     if (!url) {
         url = prompt("กรุณาวาง URL Google Apps Script Web App:");
-        if (url) {
-            localStorage.setItem("gasWebAppUrl", url);
-        } else {
-            alert("ต้องใส่ URL เพื่อใช้งานระบบ");
+
+        if (!url) {
+            alert("ต้องใส่ URL ก่อน ระบบถึงจะทำงานได้");
+            return null;
         }
+
+        localStorage.setItem("gasWebAppUrl", url);
     }
     return url;
 }
 
 function resetGASUrl() {
     localStorage.removeItem("gasWebAppUrl");
-    alert("รีเซ็ต URL แล้ว! รีเฟรชหน้าเว็บเพื่อกรอกใหม่");
+    alert("รีเซ็ต URL แล้ว! รีเฟรชหน้าเว็บและใส่ URL ใหม่");
 }
 
   // --- INITIALIZATION ---
@@ -469,28 +487,29 @@ gasWebAppUrl = await getGASUrl();
   
   // --- DATA LOADING ---
   async function apiCall(payload) {
-      if (!gasWebAppUrl) {
-          alert('กรุณาตั้งค่า Google Apps Script URL ก่อน โดยการรีเฟรชหน้าเว็บ');
-          return { success: false, error: 'GAS URL not configured' };
-      }
-      try {
-          const response = await fetch(gasWebAppUrl, {
-              method: 'POST',
-              mode: 'cors',
-              redirect: 'follow',
-              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-              body: JSON.stringify(payload)
-          });
-          if (!response.ok) {
-              throw new Error(`HTTP error! status: ${response.status}`);
-          }
-          return await response.json();
-      } catch (error) {
-          console.error('API Call Error:', error);
-          alert(`เกิดข้อผิดพลาดในการเชื่อมต่อกับ Server:\n${error.message}`);
-          return { success: false, error: error.message };
-      }
-  }
+    if (!gasWebAppUrl) {
+        alert('ยังไม่ได้ตั้งค่า GAS URL');
+        return { success: false };
+    }
+    try {
+        const response = await fetch(gasWebAppUrl, {
+            method: "POST",
+            mode: "cors",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(payload)
+        });
+
+        return await response.json();
+
+    } catch (error) {
+        console.error("API Error:", error);
+        alert("เชื่อมต่อ Google Script ไม่ได้: " + error.message);
+        return { success: false, error };
+    }
+}
+
   
   async function loadStudentData() {
       const rosterLoading = document.getElementById('roster-loading');
