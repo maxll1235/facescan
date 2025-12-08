@@ -35,6 +35,18 @@
 
 <body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 transition-colors duration-300">
 
+
+    <div class="p-4 bg-gray-800 text-white rounded mb-4">
+    <label>GAS API URL:</label>
+    <input id="gas-url-input" 
+           class="p-2 text-black rounded w-1/2" 
+           placeholder="วาง URL ของ Google Apps Script ที่นี่">
+    <button onclick="saveGASUrl()" 
+            class="ml-2 p-2 bg-blue-500 rounded">
+        บันทึก
+    </button>
+</div>
+
     <div class="container mx-auto p-4 md:p-6">
         <header class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 mb-6 flex flex-col sm:flex-row justify-between items-center gap-4">
              <div class="flex items-center space-x-3">
@@ -1459,6 +1471,48 @@ gasWebAppUrl = await getGASUrl();
           );
       }
   }
+
+  // เก็บ URL ลง localStorage
+function saveGASUrl() {
+    const url = document.getElementById('gas-url-input').value.trim();
+    if (!url) {
+        alert("กรุณากรอก URL ของ Google Script");
+        return;
+    }
+    localStorage.setItem("GAS_URL", url);
+    alert("บันทึก URL สำเร็จ");
+}
+
+// โหลด URL ตอนเปิดเว็บ
+function loadGASUrl() {
+    const url = localStorage.getItem("GAS_URL");
+    if (url) {
+        document.getElementById("gas-url-input").value = url;
+    }
+}
+
+// ส่วนแก้ API ให้ใช้ URL ที่ผู้ใช้ตั้ง
+async function apiCall(body) {
+    const url = localStorage.getItem("GAS_URL");
+    if (!url) {
+        alert("ยังไม่ได้ตั้งค่า GAS URL");
+        return { success: false };
+    }
+
+    const response = await fetch(url, {
+        method: "POST",
+        body: JSON.stringify(body),
+        headers: { "Content-Type": "application/json" }
+    });
+
+    return await response.json();
+}
+
+window.onload = () => {
+    loadGASUrl();
+    initializeApp();
+};
+
 </script>
 </body>
 </html>
