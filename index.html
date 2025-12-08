@@ -499,28 +499,24 @@ gasWebAppUrl = await getGASUrl();
   
   // --- DATA LOADING ---
   async function apiCall(payload) {
-    if (!gasWebAppUrl) {
-        alert('ยังไม่ได้ตั้งค่า GAS URL');
+    const url = localStorage.getItem("GAS_URL");
+    if (!url) {
+        alert("ยังไม่ได้ตั้งค่า GAS URL");
         return { success: false };
     }
-    try {
-        const response = await fetch(gasWebAppUrl, {
-            method: "POST",
-            mode: "cors",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify(payload)
-        });
 
-        return await response.json();
+    const response = await fetch(url + "?_method=POST", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+    });
 
-    } catch (error) {
-        console.error("API Error:", error);
-        alert("เชื่อมต่อ Google Script ไม่ได้: " + error.message);
-        return { success: false, error };
-    }
+    const text = await response.text();
+    return JSON.parse(text);
 }
+
 
   
   async function loadStudentData() {
