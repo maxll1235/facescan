@@ -328,21 +328,6 @@
   // --- GLOBAL STATE & CONFIG ---
   let gasWebAppUrl = "";
 
-window.onload = async () => {
-    lucide.createIcons();
-
-    // โหลดธีม
-    const savedTheme = localStorage.getItem("theme") || "light";
-    applyTheme(savedTheme);
-
-    // โหลด URL GAS
-    gasWebAppUrl = await getGASUrl();
-    if (!gasWebAppUrl) return;
-
-    await initializeApp();
-    getLocation();
-};
-
   let faceMatcher = null, pieChart;
   let students = [], attendance = [], checkedInToday = new Map();
   let isScanning = false, recognitionInterval = null;
@@ -401,23 +386,22 @@ function resetGASUrl() {
   window.onload = async () => {
     lucide.createIcons();
 
-    const savedTheme = localStorage.getItem('theme') ||
-        (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-    applyTheme(savedTheme);
+    loadGASUrl();         // โหลด URL จาก input
+    applyTheme(localStorage.getItem("theme") || "dark");
 
-    async function getGASUrl() {
-    let url = localStorage.getItem("gasWebAppUrl");
-
-    if (!url) {
-        url = prompt("กรุณาวาง URL Google Apps Script Web App:");
-        if (url) {
-            localStorage.setItem("gasWebAppUrl", url);
-        } else {
-            alert("ต้องใส่ URL เพื่อใช้งานระบบ");
-        }
+    gasWebAppUrl = localStorage.getItem("GAS_URL");
+    if (!gasWebAppUrl) {
+        alert("กรุณาตั้งค่า GAS URL ก่อนใช้งาน");
+        return;
     }
-    return url;
-}
+
+    await initializeApp();   // โหลดโมเดล AI
+    await loadStudentData(); // โหลดนักเรียน
+    await loadAttendanceDataForDashboard(); // โหลดการเช็คชื่อ
+    loadDataForReportFilters();
+    loadDataForSummaryFilters();
+};
+
 
 function resetGASUrl() {
     localStorage.removeItem("gasWebAppUrl");
@@ -498,53 +482,41 @@ gasWebAppUrl = await getGASUrl();
   }
   
   // --- DATA LOADING ---
-  async function apiCall(payload) {
+  async function apiCall(body) {
     const url = localStorage.getItem("GAS_URL");
+
     if (!url) {
         alert("ยังไม่ได้ตั้งค่า GAS URL");
         return { success: false };
     }
 
-    const response = await fetch(url + "?_method=POST", {
+    const response = await fetch(url, {
         method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify(payload)
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
     });
 
-    const text = await response.text();
-    return JSON.parse(text);
-}
+    const resText = await response.text();
 
-
-  
-  const API_URL = 'https://script.google.com/macros/s/AKfycbyjqh0i9GHnnTPKO7l-5IKtKr-t_FUHASnM4gsvkyZF3N3lbk1-bB98WbHxQ1AAPfB25Q/exec'; // เปลี่ยนเป็นของคุณ
-
-async function loadStudents() {
-  try {
-    const res = await fetch(API_URL, {
-      method: 'GET',
-      mode: 'cors', // ปกติไม่ต้องระบุ แต่ใส่ไว้ให้ชัวร์
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    });
-
-    if (!res.ok) {
-      throw new Error('HTTP status ' + res.status);
+    try {
+        return JSON.parse(resText);
+    } catch (e) {
+        console.error("Invalid JSON:", resText);
+        return { success: false, error: "Invalid JSON from server" };
     }
-
-    const data = await res.json();
-    console.log('data', data);
-    // ทำอะไรต่อกับ data เช่น render ตาราง
-  } catch (err) {
-    console.error('Error loading students:', err);
-  }
 }
 
-loadStudents();
+async function loadStudentData() {
+    const res = await apiCall({ action: "getStudents" });
 
+    if (res.success) {
+        students = res.data;
+        console.log("Loaded students:", students);
+        renderStudentRosterForDashboard();
+    } else {
+        console.error("Load student failed:", res.error);
+    }
+}
 
   // --- DASHBOARD ---
   function renderStudentRosterForDashboard() {
@@ -1495,23 +1467,6 @@ function loadGASUrl() {
     if (url) {
         document.getElementById("gas-url-input").value = url;
     }
-}
-
-// ส่วนแก้ API ให้ใช้ URL ที่ผู้ใช้ตั้ง
-async function apiCall(body) {
-    const url = localStorage.getItem("GAS_URL");
-    if (!url) {
-        alert("ยังไม่ได้ตั้งค่า GAS URL");
-        return { success: false };
-    }
-
-    const response = await fetch(url, {
-        method: "POST",
-        body: JSON.stringify(body),
-        headers: { "Content-Type": "application/json" }
-    });
-
-    return await response.json();
 }
 
 window.onload = () => {
