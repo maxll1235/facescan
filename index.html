@@ -519,28 +519,32 @@ gasWebAppUrl = await getGASUrl();
 
 
   
-  async function loadStudentData() {
-      const rosterLoading = document.getElementById('roster-loading');
-      if (students.length > 0) return;
-      try {
-          if (rosterLoading) rosterLoading.style.display = 'block';
-          const response = await apiCall({ action: 'getStudents' });
-          if (response.success) {
-              students = response.data;
-          } else {
-              throw new Error(response.error || 'Failed to load students from server.');
-          }
-      } catch (error) {
-          console.error('Error loading students:', error);
-          alert('เกิดข้อผิดพลาดในการโหลดข้อมูลนักเรียน');
-          students = [];
-      } finally {
-          if (rosterLoading && rosterLoading.style.display !== 'none') {
-              renderStudentRosterForDashboard();
-              rosterLoading.style.display = 'none';
-          }
+  const API_URL = 'https://script.google.com/macros/s/AKfycbyjqh0i9GHnnTPKO7l-5IKtKr-t_FUHASnM4gsvkyZF3N3lbk1-bB98WbHxQ1AAPfB25Q/exec'; // เปลี่ยนเป็นของคุณ
+
+async function loadStudents() {
+  try {
+    const res = await fetch(API_URL, {
+      method: 'GET',
+      mode: 'cors', // ปกติไม่ต้องระบุ แต่ใส่ไว้ให้ชัวร์
+      headers: {
+        'Content-Type': 'application/json'
       }
+    });
+
+    if (!res.ok) {
+      throw new Error('HTTP status ' + res.status);
+    }
+
+    const data = await res.json();
+    console.log('data', data);
+    // ทำอะไรต่อกับ data เช่น render ตาราง
+  } catch (err) {
+    console.error('Error loading students:', err);
   }
+}
+
+loadStudents();
+
 
   // --- DASHBOARD ---
   function renderStudentRosterForDashboard() {
@@ -994,6 +998,12 @@ gasWebAppUrl = await getGASUrl();
           console.error('Error loading students for recognition:', err);
       }
   }
+
+ function handleData(data) {
+    console.log("got data via JSONP", data);
+    // update UI here
+  }
+<script src="https://script.google.com/macros/s/XXX/exec?callback=handleData"></script>
 
   function handleRecognition(student) {
       const record = {
